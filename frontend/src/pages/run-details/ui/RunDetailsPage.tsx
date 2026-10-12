@@ -8,8 +8,8 @@ import { FINDING_KIND, FINDING_KINDS, RunStatusMark, StaleTag, verificationQueri
 import { StartRunButton } from '@/features/run-verification';
 import { FindingsTable, RuleStatsTable, RunReadout } from '@/widgets/verification-report';
 import { routes } from '@/shared/config';
-import { formatDateTime, formatDuration, shortHash, useRequiredParams } from '@/shared/lib';
-import { EmptyState, ErrorState, KeyValue, Loader, Mono, Note, Page, PageHeader, Pane, PaneHeader, Progress, Tabs } from '@/shared/ui';
+import { countLabel, formatDateTime, formatDuration, shortHash, useRequiredParams } from '@/shared/lib';
+import { Disclosure, EmptyState, ErrorState, KeyValue, Loader, Mono, Note, Page, PageHeader, Pane, PaneHeader, Progress, Tabs } from '@/shared/ui';
 
 export function RunDetailsPage() {
   const { projectId, runId } = useRequiredParams('projectId', 'runId');
@@ -32,14 +32,15 @@ export function RunDetailsPage() {
   const countOf = (k: FindingKind) => all.filter((f) => f.kind === k).length;
 
   return (
-    <Page className="max-w-none">
-      <Link to={routes.verification(projectId)} className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
+    <Page>
+      <Link to={routes.verification(projectId)} className="mb-2 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
         <ArrowLeftIcon size={12} /> Все проверки
       </Link>
       <PageHeader
+        className="mb-2"
         title={
-          <span className="flex items-center gap-2">
-            Проверка <Mono className="text-base">{r.id}</Mono>
+          <span className="flex items-baseline gap-2">
+            Проверка <Mono className="text-lg">{r.id}</Mono>
           </span>
         }
         meta={
@@ -61,8 +62,46 @@ export function RunDetailsPage() {
         }
       />
 
+      {/* What was checked, on one line; hashes and engine settings are one click away. */}
+      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted">
+        <Link to={routes.spec(projectId, { interpretationId: r.interpretationId, versionId: r.versionId })} className="link text-fg">
+          {r.interpretationName} v{r.version}
+        </Link>
+        <span aria-hidden>·</span>
+        <span>
+          {r.corpusName}
+          {corpus ? `, ${countLabel(corpus.sessionIds.length, ['сессия', 'сессии', 'сессий'])}` : ''}
+        </span>
+        <span aria-hidden>·</span>
+        <span>{formatDateTime(r.startedAt)}</span>
+        {r.durationMs !== undefined && (
+          <>
+            <span aria-hidden>·</span>
+            <span className="font-mono">{formatDuration(r.durationMs)}</span>
+          </>
+        )}
+      </p>
+      <Disclosure summary="Условия воспроизведения" className="mt-1.5">
+        <div className="grid gap-x-10 gap-y-1 border-l border-line pl-4 lg:grid-cols-2">
+          <KeyValue
+            items={[
+              ['Хеш версии', <Mono key="h">{shortHash(r.versionHash, 24)}</Mono>],
+              ['Корпус', <Mono key="c">{shortHash(r.corpusHash, 24)}</Mono>],
+              ['Отбор', corpus ? describeCorpusFilter(corpus.filter).join(' · ') : '—'],
+            ]}
+          />
+          <KeyValue
+            items={[
+              ['Движок', <Mono key="e">{r.engineVersion}</Mono>],
+              ['Перекрытия', r.settings.overlapPolicy],
+              ['Checksum', r.settings.checksumPolicy],
+            ]}
+          />
+        </div>
+      </Disclosure>
+
       {r.stale && (
-        <Note tone="warn" title="Результат устарел и не отражает текущее состояние" className="mb-4">
+        <Note tone="warn" title="Результат устарел и не отражает текущее состояние" className="mt-4">
           <ul className="list-inside list-disc">
             {r.staleReasons.map((reason) => (
               <li key={reason}>{reason}</li>
@@ -71,54 +110,18 @@ export function RunDetailsPage() {
         </Note>
       )}
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <Pane>
-          <PaneHeader title="Что проверялось" />
-          <div className="p-3">
-            <KeyValue
-              items={[
-                [
-                  'Интерпретация',
-                  <Link key="i" to={routes.spec(projectId, { interpretationId: r.interpretationId, versionId: r.versionId })} className="link">
-                    {r.interpretationName} v{r.version}
-                  </Link>,
-                ],
-                ['Хеш версии', <Mono key="h">{shortHash(r.versionHash, 24)}</Mono>],
-                ['Корпус', `${r.corpusName}${corpus ? ` — ${corpus.sessionIds.length} сессий` : ''}`],
-                ['Условия отбора', corpus ? describeCorpusFilter(corpus.filter).join(' · ') : '—'],
-                ['Хеш корпуса', <Mono key="c">{shortHash(r.corpusHash, 24)}</Mono>],
-              ]}
-            />
-          </div>
-        </Pane>
-        <Pane>
-          <PaneHeader title="Условия воспроизведения" />
-          <div className="p-3">
-            <KeyValue
-              items={[
-                ['Движок', <Mono key="e">{r.engineVersion}</Mono>],
-                ['Перекрытия', r.settings.overlapPolicy],
-                ['Checksum', r.settings.checksumPolicy],
-                ['Запуск', formatDateTime(r.startedAt)],
-                ['Длительность', r.durationMs !== undefined ? formatDuration(r.durationMs) : '—'],
-              ]}
-            />
-          </div>
-        </Pane>
-      </div>
-
       {(r.status === 'running' || r.status === 'queued') && (
-        <Pane className="mb-4 px-4 py-4">
-          <p className="mb-2 text-[13px]">Проверка выполняется…</p>
+        <Pane className="mt-4 px-4 py-4">
+          <p className="mb-2 text-sm">Проверка выполняется…</p>
           <Progress value={0.5} className="animate-pulse" />
         </Pane>
       )}
 
       {r.summary && (
-        <>
+        <div className="mt-4">
           <RunReadout summary={r.summary} previous={previous.data?.summary} />
           {previous.data && (
-            <p className="mt-2 text-[11.5px] text-subtle">
+            <p className="mt-2 text-2xs text-muted">
               Сравнение с предыдущей проверкой той же интерпретации на этом корпусе:{' '}
               <Link to={routes.run(projectId, previous.data.id)} className="link">
                 {previous.data.id} (v{previous.data.version})
@@ -130,7 +133,7 @@ export function RunDetailsPage() {
             {r.summary.inapplicableRules.length ? ` (${r.summary.inapplicableRules.join(', ')})` : ''} на этом корпусе не проверены.
           </Note>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <Pane className="min-w-0">
               <Tabs<FindingKind | 'all'>
                 value={kind}
@@ -147,7 +150,7 @@ export function RunDetailsPage() {
               <RuleStatsTable summary={r.summary} />
             </Pane>
           </div>
-        </>
+        </div>
       )}
       {r.status === 'cancelled' && <EmptyState title="Проверка отменена" description="Результаты не сформированы." />}
     </Page>

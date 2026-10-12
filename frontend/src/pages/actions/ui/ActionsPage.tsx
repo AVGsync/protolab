@@ -17,8 +17,8 @@ export function ActionsPage() {
         actions={<ImportActionsButton projectId={projectId} />}
       />
       <Note tone="info" className="mb-4">
-        Формат импорта, CSV: <code className="font-mono text-[11.5px]">timestamp,kind,label,params,result</code>, где params —{' '}
-        <code className="font-mono text-[11.5px]">param=setpoint;value=21</code> или JSON. Также принимается JSON-массив действий.
+        Формат импорта, CSV: <code className="font-mono text-2xs">timestamp,kind,label,params,result</code>, где params —{' '}
+        <code className="font-mono text-2xs">param=setpoint;value=21</code> или JSON. Также принимается JSON-массив действий.
       </Note>
       {isLoading && <Loader />}
       {error && <ErrorState error={error} onRetry={refetch} />}
@@ -38,21 +38,21 @@ export function ActionsPage() {
             <TBody>
               {data.items.map((a) => (
                 <Tr key={a.id} className="align-top">
-                  <Td className="font-mono text-[12px] whitespace-nowrap text-muted">
+                  <Td className="font-mono text-xs whitespace-nowrap text-muted">
                     {a.timestamp.slice(0, 10)}
                     <br />
                     {formatTimestamp(a.timestamp, 3)}
                   </Td>
                   <Td>
                     <p className="font-medium">{a.label}</p>
-                    <p className="text-[11px] text-subtle">
+                    <p className="text-2xs text-muted">
                       {ACTION_KIND_LABEL[a.kind]} · {a.source === 'import' ? 'импорт' : 'вручную'}
                     </p>
                   </Td>
                   <Td>
                     <ActionParams params={a.params} />
                   </Td>
-                  <Td className="text-[12.5px]">
+                  <Td className="text-xs">
                     {a.result ?? '—'}
                     {a.observed && (
                       <div className="mt-1">
@@ -71,7 +71,7 @@ export function ActionsPage() {
                           className="link flex items-center gap-2 font-mono text-xs"
                         >
                           {l.sessionId}
-                          <span className="text-[11px] text-subtle">
+                          <span className="text-2xs text-muted">
                             {l.method === 'auto_time' ? `по времени, сдвиг ${formatDuration(l.deltaMs ?? 0)}` : 'вручную'}
                           </span>
                         </Link>

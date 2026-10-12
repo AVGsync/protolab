@@ -16,7 +16,7 @@ const th = 'h-7 border-b border-line px-2 font-normal whitespace-nowrap';
 export function PacketTable({ packets, onSelect }: PacketTableProps) {
   const t0 = packets[0]?.timestamp;
   return (
-    <table className="w-full border-collapse text-left text-[12px]">
+    <table className="w-full border-collapse text-left text-xs">
       <thead className="sticky top-0 bg-surface text-xs text-muted">
         <tr>
           <th className={cn(th, 'pl-4 text-right')} title="Номер пакета в записи">

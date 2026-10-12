@@ -8,7 +8,7 @@ const SQUARE: Record<Tone, string> = {
   warn: 'bg-warn',
   danger: 'bg-danger',
   info: 'bg-info',
-  muted: 'bg-subtle',
+  muted: 'bg-muted',
 };
 
 export interface StatusProps {
@@ -34,7 +34,7 @@ export function Status({ tone = 'muted', title, className, children }: StatusPro
 /** Quiet mono tag such as [v3] or [устарела]. */
 export function Tag({ title, className, children }: { title?: string; className?: string; children: ReactNode }) {
   return (
-    <span title={title} className={cn('inline-flex items-center font-mono text-[11px] leading-4 whitespace-nowrap text-muted', className)}>
+    <span title={title} className={cn('inline-flex items-center font-mono text-2xs leading-4 whitespace-nowrap text-muted', className)}>
       [{children}]
     </span>
   );
@@ -45,7 +45,7 @@ export function Keycap({ className, children }: { className?: string; children: 
   return (
     <kbd
       className={cn(
-        'inline-flex h-4 min-w-4 items-center justify-center rounded-ctl border border-b-2 border-line-strong px-1 font-mono text-[11px] leading-none text-fg',
+        'inline-flex h-4 min-w-4 items-center justify-center rounded-ctl border border-b-2 border-line-strong px-1 font-mono text-2xs leading-none text-fg',
         className,
       )}
     >

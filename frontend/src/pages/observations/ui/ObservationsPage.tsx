@@ -55,10 +55,10 @@ export function ObservationsPage() {
                   <Td className="max-w-sm">{o.note}</Td>
                   <Td>
                     <SourceRefLink projectId={projectId} source={o.source} />
-                    <div className="mt-0.5 font-mono text-[10.5px] text-subtle">пакеты #{o.source.packetNumbers.join(', #')}</div>
+                    <div className="mt-0.5 font-mono text-2xs text-muted">пакеты #{o.source.packetNumbers.join(', #')}</div>
                   </Td>
                   <Td>
-                    <code className="font-mono text-[11.5px] text-fg">{o.snapshotHex}</code>
+                    <code className="font-mono text-2xs text-fg">{o.snapshotHex}</code>
                     {o.integrity === 'mismatch' && (
                       <div className="mt-1">
                         <Status tone="danger">не совпадает с источником</Status>
@@ -68,13 +68,13 @@ export function ObservationsPage() {
                   <Td>
                     <div className="flex flex-col gap-0.5">
                       {o.hypothesisIds.map((id) => (
-                        <Link key={id} to={routes.hypotheses(projectId, id)} className="text-[12px] link">
+                        <Link key={id} to={routes.hypotheses(projectId, id)} className="text-xs link">
                           {id}: {titleById.get(id) ?? ''}
                         </Link>
                       ))}
                     </div>
                   </Td>
-                  <Td className="text-[12px] whitespace-nowrap text-muted">{formatDateTime(o.createdAt)}</Td>
+                  <Td className="text-xs whitespace-nowrap text-muted">{formatDateTime(o.createdAt)}</Td>
                 </Tr>
               ))}
             </TBody>

@@ -49,10 +49,10 @@ export function CapturesPage() {
                 return (
                   <Fragment key={c.id}>
                     <Tr onClick={() => setExpanded(open ? null : c.id)}>
-                      <Td className="text-subtle">{open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}</Td>
+                      <Td className="text-muted">{open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}</Td>
                       <Td>
                         <p>{c.fileName}</p>
-                        <p className="font-mono text-[11px] text-subtle">
+                        <p className="font-mono text-2xs text-muted">
                           {c.format.toUpperCase()} {c.linkType} snaplen {c.snapLen}, импорт {formatDateTime(c.importedAt)}
                         </p>
                       </Td>
@@ -68,7 +68,7 @@ export function CapturesPage() {
                         <Link to={routes.sessions(projectId, { captureId: c.id })} className="link">
                           {c.sessionCount}
                         </Link>
-                        <span className="text-subtle"> / {c.targetSessionCount} цел.</span>
+                        <span className="text-muted"> / {c.targetSessionCount} цел.</span>
                       </Td>
                       <Td className="font-mono text-xs whitespace-nowrap text-muted">
                         {c.firstPacketAt ? `${c.firstPacketAt.slice(0, 10)} ${formatTimestamp(c.firstPacketAt, 0)}–${formatTimestamp(c.lastPacketAt!, 0)}` : '—'}

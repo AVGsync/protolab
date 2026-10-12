@@ -45,7 +45,7 @@ export function AnnotationLanes({ message, segments, gaps, framing, channel, sel
 
   return (
     <section className="shrink-0 border-b border-line bg-surface px-4 pt-3 pb-3.5">
-      <h3 className="mb-2 flex items-baseline gap-2.5 text-[13px] font-semibold">
+      <h3 className="mb-2 flex items-baseline gap-2.5 text-sm font-semibold">
         #{message.index} {message.ruleTitle ?? message.ruleId ?? 'не распознано'}
         <span className="font-mono text-xs font-normal text-muted">
           {message.length} Б, {countLabel(packets, ['TCP-сегмент', 'TCP-сегмента', 'TCP-сегментов'])}
@@ -54,7 +54,7 @@ export function AnnotationLanes({ message, segments, gaps, framing, channel, sel
       </h3>
       <div className="grid grid-cols-[44px_minmax(0,1fr)] items-center gap-y-1">
         <span />
-        <div className="relative h-3.5 font-mono text-[10px] text-muted" aria-hidden>
+        <div className="relative h-3.5 font-mono text-2xs text-muted" aria-hidden>
           {ticks.map((o) => (
             <span
               key={o}
@@ -83,7 +83,7 @@ export function AnnotationLanes({ message, segments, gaps, framing, channel, sel
                   onMouseEnter={s.path ? () => onLink({ messageIndex: message.index, path: s.path!, range }) : undefined}
                   onMouseLeave={s.path ? () => onLink(null) : undefined}
                   className={cn(
-                    'absolute inset-y-0 flex min-w-[3px] items-center overflow-hidden border-l border-bg font-mono text-[11px] whitespace-nowrap',
+                    'absolute inset-y-0 flex min-w-[3px] items-center overflow-hidden border-l border-bg font-mono text-2xs whitespace-nowrap',
                     s.tone !== undefined ? fieldLaneClass(s.tone) : 'bg-surface-2 shadow-[inset_0_0_0_1px_var(--pl-line)]',
                     s.kind === 'gap' && 'bg-hatch text-unknown',
                     s.kind === 'violation' && 'bg-danger text-bg',

@@ -101,7 +101,7 @@ export const HexRow = memo(function HexRow(p: HexRowProps) {
         {unknown ? '??' : hexByte(b)}
         {underline}
         {idx & SEGMENT_START ? (
-          <i aria-hidden className={cn('absolute top-[3px] left-px h-1 w-0.5', idx & SEGMENT_FLAGGED ? 'bg-warn' : 'bg-subtle')} />
+          <i aria-hidden className={cn('absolute top-[3px] left-px h-1 w-0.5', idx & SEGMENT_FLAGGED ? 'bg-warn' : 'bg-muted')} />
         ) : null}
         {idx & HIT ? (
           <i
@@ -134,7 +134,7 @@ export const HexRow = memo(function HexRow(p: HexRowProps) {
       style={{ top: p.top, height: ROW_HEIGHT }}
     >
       <span
-        className={cn('shrink-0 pr-2 text-right font-mono text-[10px]', first?.violated || violated ? 'text-danger' : 'text-muted')}
+        className={cn('shrink-0 pr-2 text-right font-mono text-2xs', first?.violated || violated ? 'text-danger' : 'text-muted')}
         style={{ width: GUTTER_WIDTH }}
         title={first ? `Сообщение #${first.index} начинается в этой строке` : violated ? 'В строке есть нарушение' : undefined}
       >
@@ -151,7 +151,7 @@ export const HexRow = memo(function HexRow(p: HexRowProps) {
           return (
             <span
               key={g.at}
-              className="absolute top-0 text-[11px] leading-[22px] text-unknown"
+              className="absolute top-0 text-2xs leading-[22px] text-unknown"
               style={fits ? { left: g.at * ASCII_WIDTH } : { left: BYTES_PER_ROW * ASCII_WIDTH + 8 }}
             >
               {g.text}

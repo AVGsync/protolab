@@ -30,7 +30,7 @@ export function Segmented<T extends string>({ items, value, onChange, className,
             title={item.title}
             onClick={() => onChange(item.id)}
             className={cn(
-              'inline-flex h-[26px] items-center gap-1.5 border-l border-line px-2.5 text-[13px] whitespace-nowrap transition-colors first:rounded-l-[2px] first:border-l-0 last:rounded-r-[2px]',
+              'inline-flex h-[26px] items-center gap-1.5 border-l border-line px-2.5 text-sm whitespace-nowrap transition-colors first:rounded-l-[2px] first:border-l-0 last:rounded-r-[2px]',
               active ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg',
             )}
           >

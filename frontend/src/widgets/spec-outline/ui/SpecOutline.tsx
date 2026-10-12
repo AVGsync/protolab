@@ -18,7 +18,7 @@ export function SpecOutline({ projectId, spec, hypotheses = [] }: SpecOutlinePro
   const f = spec.framing;
   return (
     <div className="flex flex-col gap-4">
-      <div className="border border-line bg-surface px-3 py-2.5 text-[12.5px]">
+      <div className="border border-line bg-surface px-3 py-2.5 text-xs">
         <span className="text-muted">Кадрирование: </span>
         {f.kind === 'length_prefixed' && (
           <span className="font-mono">
@@ -34,10 +34,10 @@ export function SpecOutline({ projectId, spec, hypotheses = [] }: SpecOutlinePro
       {spec.messages.map((rule) => (
         <div key={rule.id} className="border border-line bg-surface">
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-            <span className="font-mono text-[12.5px] font-semibold">{rule.id}</span>
+            <span className="font-mono text-xs font-semibold">{rule.id}</span>
             {rule.title && <span className="text-muted">{rule.title}</span>}
             {rule.direction && rule.direction !== 'any' && <DirectionLabel direction={rule.direction} compact />}
-            <span className="ml-auto font-mono text-[11px] text-subtle">
+            <span className="ml-auto font-mono text-2xs text-muted">
               {rule.match.map((m) => `@${m.offset}=${m.hex}`).join(' ∧ ')}
             </span>
           </div>
@@ -52,9 +52,9 @@ export function SpecOutline({ projectId, spec, hypotheses = [] }: SpecOutlinePro
       {spec.assertions && spec.assertions.length > 0 && (
         <div className="border border-line bg-surface px-3 py-2.5">
           <p className="mb-1.5 text-xs text-muted">Проверки по журналу действий</p>
-          <ul className="flex flex-col gap-1 text-[12.5px]">
+          <ul className="flex flex-col gap-1 text-xs">
             {spec.assertions.map((a) => (
-              <li key={a.id} className="font-mono text-[12px]">
+              <li key={a.id} className="font-mono text-xs">
                 <span className="text-muted">{a.id}:</span> {a.rule} при «{a.actionKind}» <Arrow />{' '}
                 {a.checks.map((c) => `${c.field} = ${c.equals}`).join(', ')}
               </li>
@@ -70,12 +70,12 @@ function FieldLine({ field, projectId, byId, depth = 0 }: { field: FieldRule; pr
   const h = field.hypothesis ? byId.get(field.hypothesis) : undefined;
   return (
     <>
-      <li className="grid grid-cols-[minmax(110px,160px)_44px_84px_1fr] items-start gap-2 px-3 py-1.5 text-[12.5px]">
+      <li className="grid grid-cols-[minmax(110px,160px)_44px_84px_1fr] items-start gap-2 px-3 py-1.5 text-xs">
         <span className="font-mono" style={{ paddingLeft: depth * 14 }}>
           {field.name}
         </span>
-        <span className="font-mono text-subtle">@{field.offset}</span>
-        <span className="font-mono text-subtle">
+        <span className="font-mono text-muted">@{field.offset}</span>
+        <span className="font-mono text-muted">
           {field.type}
           {field.endian && field.type !== 'u8' && field.type !== 'i8' ? field.endian : ''}
           {field.scale ? ` ×${field.scale}` : ''}
@@ -83,12 +83,12 @@ function FieldLine({ field, projectId, byId, depth = 0 }: { field: FieldRule; pr
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-muted">
             {field.meaning ?? ''}
-            {field.checksum && <span className="ml-1 font-mono text-[11px] text-info">[{field.checksum}]</span>}
+            {field.checksum && <span className="ml-1 font-mono text-2xs text-info">[{field.checksum}]</span>}
           </span>
           {field.status && <MeaningMark status={field.status} />}
           {h && (
             <Link to={routes.hypotheses(projectId, h.id)} title={`${h.id}: ${h.title}`} className="inline-flex items-center gap-1">
-              <span className="font-mono text-[10.5px] text-subtle">{h.id}</span>
+              <span className="font-mono text-2xs text-muted">{h.id}</span>
               <HypothesisStatusMark status={h.status} />
             </Link>
           )}

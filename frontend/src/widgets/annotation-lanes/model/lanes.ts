@@ -98,7 +98,7 @@ export function rulerTicks(length: number, widthPx: number, minGapPx = 48): numb
   const ticks: number[] = [];
   for (let o = 0; o < length; o += step) ticks.push(o);
   const last = length - 1;
-  if (last * pxPerByte - ticks[ticks.length - 1] * pxPerByte >= minGapPx * 0.6) ticks.push(last);
+  if (last * pxPerByte - ticks[ticks.length - 1] * pxPerByte >= minGapPx) ticks.push(last);
   else if (ticks.length > 1) ticks[ticks.length - 1] = last;
   return ticks;
 }

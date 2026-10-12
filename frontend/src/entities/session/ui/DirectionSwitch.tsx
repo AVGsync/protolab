@@ -23,7 +23,7 @@ export function DirectionSwitch({ value, onChange, bytes }: DirectionSwitchProps
         label: (
           <>
             <DirectionLabel direction={d} />
-            <span className="font-mono text-[11px] text-muted">{bytes[d]} Б</span>
+            <span className="font-mono text-2xs text-muted">{bytes[d]} Б</span>
           </>
         ),
       }))}

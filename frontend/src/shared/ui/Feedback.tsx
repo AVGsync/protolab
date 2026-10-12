@@ -1,5 +1,5 @@
 import { CircleNotchIcon } from '@phosphor-icons/react';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError } from '../api/http';
 import { cn } from '../lib/cn';
 import { Button } from './Button';
@@ -9,11 +9,25 @@ export function Spinner({ size = 16, className }: { size?: number; className?: s
   return <CircleNotchIcon size={size} className={cn('animate-spin', className)} aria-hidden />;
 }
 
-export function Loader({ label = 'Загрузка…', className }: { label?: string; className?: string }) {
+/**
+ * Waits `delay` ms before it shows anything: answers that arrive within a blink never flash a spinner.
+ * The space is reserved meanwhile, so the page does not jump.
+ */
+export function Loader({ label = 'Загрузка…', className, delay = 200 }: { label?: string; className?: string; delay?: number }) {
+  const [visible, setVisible] = useState(delay <= 0);
+  useEffect(() => {
+    if (delay <= 0) return;
+    const timer = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
   return (
-    <div className={cn('flex items-center justify-center gap-2 py-10 text-muted', className)}>
-      <Spinner size={14} />
-      <span>{label}</span>
+    <div role="status" aria-busy className={cn('flex items-center justify-center gap-2 py-10 text-muted', className)}>
+      {visible && (
+        <>
+          <Spinner size={14} />
+          <span>{label}</span>
+        </>
+      )}
     </div>
   );
 }
@@ -25,16 +39,13 @@ export interface EmptyStateProps {
   className?: string;
 }
 
-/** Empty states are the only place that gets graph paper. */
+/** An empty state is a plain statement and, when there is one, the next action: no illustration. */
 export function EmptyState({ title, description, action, className }: EmptyStateProps) {
   return (
-    <div className={cn('relative flex flex-col items-center justify-center px-6 py-16 text-center', className)}>
-      <div aria-hidden className="bg-graph absolute inset-0" />
-      <div className="relative flex flex-col items-center">
-        <p className="font-medium">{title}</p>
-        {description && <p className="mt-1 max-w-md text-xs text-muted">{description}</p>}
-        {action && <div className="mt-4">{action}</div>}
-      </div>
+    <div className={cn('flex flex-col items-center justify-center px-6 py-12 text-center', className)}>
+      <p className="font-medium">{title}</p>
+      {description && <p className="mt-1 max-w-md text-xs text-muted">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
@@ -50,7 +61,7 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
       </p>
       <p className="max-w-md text-xs text-muted">
         {message}
-        {code && <span className="ml-1 font-mono text-subtle">[{code}]</span>}
+        {code && <span className="ml-1 font-mono text-muted">[{code}]</span>}
       </p>
       {onRetry && (
         <Button variant="ghost" size="sm" onClick={onRetry}>
@@ -62,7 +73,7 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
 }
 
 const BAR_TONES: Record<Tone | 'live', string> = {
-  live: 'bg-accent-2',
+  live: 'bg-accent',
   ok: 'bg-ok',
   warn: 'bg-warn',
   danger: 'bg-danger',
@@ -70,7 +81,7 @@ const BAR_TONES: Record<Tone | 'live', string> = {
   muted: 'bg-muted',
 };
 
-/** Flat progress bar; orange ("live") while something is running. */
+/** Flat progress bar; the accent ("live") while something is running. */
 export function Progress({ value, tone = 'live', className }: { value: number; tone?: Tone | 'live'; className?: string }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return (

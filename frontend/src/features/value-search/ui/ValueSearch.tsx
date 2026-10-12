@@ -104,7 +104,7 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
                 aria-pressed={encodings.includes(enc)}
                 onClick={() => toggle(enc)}
                 className={cn(
-                  'h-5 rounded-ctl border px-1.5 font-mono text-[11px]',
+                  'h-5 rounded-ctl border px-1.5 font-mono text-2xs',
                   encodings.includes(enc) ? 'border-line-strong bg-surface-2 text-fg' : 'border-line text-muted hover:text-fg',
                 )}
               >
@@ -127,11 +127,11 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
                 <button
                   type="button"
                   onClick={() => onSelect(h)}
-                  className="flex h-7 w-full items-center gap-3 border-t border-line px-4 text-left font-mono text-[12px] hover:bg-surface-2"
+                  className="flex h-7 w-full items-center gap-3 border-t border-line px-4 text-left font-mono text-xs hover:bg-surface-2"
                 >
                   <span className="w-14 text-muted">{formatOffset(h.offset)}</span>
                   <span>{toHex(bytes.subarray(h.offset, h.offset + h.length))}</span>
-                  <span className="ml-auto text-[11px] text-muted">{h.encodings.join(' ')}</span>
+                  <span className="ml-auto text-2xs text-muted">{h.encodings.join(' ')}</span>
                 </button>
               </li>
             ))}

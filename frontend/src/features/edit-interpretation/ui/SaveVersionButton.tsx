@@ -69,7 +69,7 @@ export function SaveVersionButton({ projectId, interpretationId, spec, disabled,
               <ul className="mt-1 list-inside list-disc">
                 {(issues as { path: string; message: string }[]).map((i, n) => (
                   <li key={n}>
-                    <code className="font-mono text-[11px]">{i.path}</code> {i.message}
+                    <code className="font-mono text-2xs">{i.path}</code> {i.message}
                   </li>
                 ))}
               </ul>

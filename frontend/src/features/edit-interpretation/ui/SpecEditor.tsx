@@ -25,7 +25,7 @@ export function SpecEditor({ value, onChange, syntaxError, issues = [], readOnly
         <div
           ref={gutter}
           aria-hidden
-          className="w-11 shrink-0 overflow-hidden border-r border-line bg-surface py-2 pr-2 text-right font-mono text-[11.5px] leading-[19px] text-subtle select-none"
+          className="w-11 shrink-0 overflow-hidden border-r border-line bg-surface py-2 pr-2 text-right font-mono text-2xs leading-[19px] text-muted select-none"
         >
           {Array.from({ length: lines }, (_, i) => (
             <div key={i}>{i + 1}</div>
@@ -48,7 +48,7 @@ export function SpecEditor({ value, onChange, syntaxError, issues = [], readOnly
             onChange(next);
             requestAnimationFrame(() => el.setSelectionRange(s + 2, s + 2));
           }}
-          className="min-h-0 flex-1 resize-none bg-transparent px-3 py-2 font-mono text-[12px] leading-[19px] whitespace-pre text-fg outline-none"
+          className="min-h-0 flex-1 resize-none bg-transparent px-3 py-2 font-mono text-xs leading-[19px] whitespace-pre text-fg outline-none"
         />
       </div>
       <div className="max-h-36 overflow-y-auto border border-t-0 border-line bg-surface px-3 py-2 text-xs">
@@ -61,7 +61,7 @@ export function SpecEditor({ value, onChange, syntaxError, issues = [], readOnly
             {[...errors, ...warnings].map((issue, i) => (
               <li key={i} className="flex items-start gap-2">
                 <Status tone={issue.severity === 'error' ? 'danger' : 'warn'} className="[&>i]:mt-[1px]">
-                  <code className="font-mono text-[11px] text-muted">{issue.path}</code>
+                  <code className="font-mono text-2xs text-muted">{issue.path}</code>
                 </Status>
                 <span>{issue.message}</span>
               </li>

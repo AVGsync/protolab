@@ -56,7 +56,7 @@ export function CreateObservationButton({ projectId, source, previewHex, hasUnkn
 
   return (
     <>
-      <Button size="sm" variant="primary" disabled={!source} title={source ? undefined : 'Выделите байты в потоке'} onClick={() => setOpen(true)}>
+      <Button size="sm" variant={source ? 'primary' : 'secondary'} disabled={!source} title={source ? undefined : 'Выделите байты в потоке'} onClick={() => setOpen(true)}>
         Наблюдение
       </Button>
       <Modal
@@ -115,7 +115,7 @@ export function CreateObservationButton({ projectId, source, previewHex, hasUnkn
                   <HypothesisStatusMark status={h.status} />
                 </div>
               ))}
-              {hypotheses.data?.items.length === 0 && <p className="text-xs text-subtle">Гипотез пока нет.</p>}
+              {hypotheses.data?.items.length === 0 && <p className="text-xs text-muted">Гипотез пока нет.</p>}
             </div>
           </div>
         </form>

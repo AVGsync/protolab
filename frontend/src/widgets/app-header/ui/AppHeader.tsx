@@ -7,17 +7,15 @@ import { cn, useTheme } from '@/shared/lib';
 import { Tag } from '@/shared/ui';
 import { JobsIndicator } from './JobsIndicator';
 
-/** A square probe glyph; the only place besides the heat scale where the brand gradient appears. */
+/**
+ * The mark is the app's own sign for "bytes we do not understand yet": a square hatched like the unknown
+ * bytes of the hex view (see bg-hatch). Flat, one outline colour, the accent only on the hatching.
+ */
 function Logo() {
   return (
-    <svg viewBox="0 0 14 14" className="size-3.5" aria-hidden>
-      <defs>
-        <linearGradient id="pl-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--pl-accent)" />
-          <stop offset="1" stopColor="var(--pl-accent-2)" />
-        </linearGradient>
-      </defs>
-      <path fill="url(#pl-mark)" fillRule="evenodd" d="M0 0h14v14H0zM4.2 4.2v5.6h5.6V4.2z" />
+    <svg viewBox="0 0 14 14" className="size-3.5 shrink-0" fill="none" aria-hidden>
+      <rect x="0.75" y="0.75" width="12.5" height="12.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M2.5 8.5l6-6M2.5 11.5l9-9M5.5 11.5l6-6" stroke="var(--pl-accent)" strokeWidth="1.25" />
     </svg>
   );
 }
@@ -44,12 +42,13 @@ export function AppHeader() {
 
   return (
     <header className="relative flex h-10 shrink-0 items-center gap-5 bg-surface px-4 after:absolute after:inset-x-0 after:bottom-0 after:h-px after:bg-line">
-      <Link to={routes.home()} className="flex items-center gap-2 font-semibold" title="К списку проектов">
+      <Link to={routes.home()} className="flex items-center gap-2 font-semibold tracking-tight" title="К списку проектов">
         <Logo />
         ProtoLab
       </Link>
       {projectId && (
         <>
+          <span aria-hidden className="h-4 w-px bg-line" />
           <Link to={routes.project(projectId)} className="max-w-64 truncate text-muted hover:text-fg">
             {project.data?.name ?? projectId}
           </Link>
@@ -68,7 +67,7 @@ export function AppHeader() {
                 }
               >
                 {section.label}
-                <span className="font-mono text-[11px] opacity-70">{section.key}</span>
+                <span className="font-mono text-2xs text-muted">{section.key}</span>
               </NavLink>
             ))}
           </nav>

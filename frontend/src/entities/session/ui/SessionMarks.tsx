@@ -56,7 +56,7 @@ export function DirectionLabel({ direction, compact, className }: { direction: D
     <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap', c2s ? 'text-ch-c2s' : 'text-ch-s2c', className)} title={DIRECTION_LABEL[direction]}>
       <i aria-hidden className="h-0.5 w-2.5 shrink-0 bg-current" />
       {compact ? (
-        <span className="inline-flex items-center gap-1 font-mono text-[11px]">
+        <span className="inline-flex items-center gap-1 font-mono text-2xs">
           {c2s ? 'C' : 'S'}
           <Arrow />
           {c2s ? 'S' : 'C'}

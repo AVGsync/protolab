@@ -11,3 +11,4 @@ export type {
   VerificationRun,
 } from './model/types';
 export { FindingKindMark, RunStatusMark, StaleTag } from './ui/RunMarks';
+export { RunOutcome } from './ui/RunOutcome';

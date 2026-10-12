@@ -51,7 +51,7 @@ export function MessageList({ messages, activeIndex, onSelect, className }: Mess
                 <DirectionLabel direction={m.direction} compact />
                 <span className="min-w-0">
                   <span className="block truncate">{m.ruleId ?? <span className="text-muted">не распознано</span>}</span>
-                  <span className="block font-mono text-[11px] leading-4 text-muted">
+                  <span className="block font-mono text-2xs leading-4 text-muted">
                     {formatTimestamp(m.timestamp, 3)} @{m.offset} {m.length} Б
                   </span>
                 </span>

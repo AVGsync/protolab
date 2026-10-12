@@ -148,7 +148,7 @@ export function HexViewer({
           <HexHeader />
           <div
             ref={scrollRef}
-            className="min-h-0 flex-1 overflow-y-auto font-mono text-[12.5px] select-none"
+            className="min-h-0 flex-1 overflow-y-auto font-mono text-sm select-none"
             onMouseDown={onMouseDown}
             onMouseMove={onMouseMove}
             onMouseLeave={() => {
@@ -183,6 +183,13 @@ export function HexViewer({
                 );
               })}
             </div>
+            <p
+              className="flex h-8 items-center gap-2 font-sans text-2xs text-muted"
+              style={{ paddingLeft: 12 + GUTTER_WIDTH + OFFSET_WIDTH }}
+            >
+              <span aria-hidden className="h-px w-6 bg-line-strong" />
+              конец потока, {bytes.length} Б
+            </p>
           </div>
         </div>
       )}
@@ -195,7 +202,7 @@ const COLUMNS = Array.from({ length: BYTES_PER_ROW }, (_, k) => k);
 function HexHeader() {
   return (
     <div
-      className="flex shrink-0 items-center border-b border-line pl-3 font-mono text-[11px] whitespace-pre text-muted"
+      className="flex shrink-0 items-center border-b border-line pl-3 font-mono text-2xs whitespace-pre text-muted"
       style={{ height: ROW_HEIGHT }}
     >
       <span className="shrink-0" style={{ width: GUTTER_WIDTH }} />

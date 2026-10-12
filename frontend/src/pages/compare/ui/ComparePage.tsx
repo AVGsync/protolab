@@ -4,7 +4,7 @@ import { actionQueries, numericParams, type ActionEntry } from '@/entities/actio
 import { interpretationQueries } from '@/entities/interpretation';
 import { messageQueries } from '@/entities/message';
 import { CreateHypothesisButton } from '@/features/manage-hypothesis';
-import { CandidateList, CompareMatrix, type CompareRowData } from '@/widgets/compare-matrix';
+import { CandidateList, CompareMatrix, HeatLegend, type CompareRowData } from '@/widgets/compare-matrix';
 import { routes } from '@/shared/config';
 import {
   base64ToBytes,
@@ -14,7 +14,7 @@ import {
   useRequiredParams,
   type FieldCandidate,
 } from '@/shared/lib';
-import { Pane, PaneHeader, EmptyState, ErrorState, Field, Loader, Page, PageHeader, Select } from '@/shared/ui';
+import { EmptyState, ErrorState, InlineField, Loader, Page, PageHeader, Pane, PaneHeader, Select } from '@/shared/ui';
 
 /** Candidate value paths of an action: params.* and observed.* */
 function valuePaths(action: ActionEntry | undefined): Record<string, number> {
@@ -79,13 +79,12 @@ export function ComparePage() {
   const search = useMemo(() => findFieldCandidates(rows), [rows]);
 
   return (
-    <Page className="max-w-none">
-      <PageHeader
-        title="Сравнение примеров"
-      />
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Field label="Интерпретация (кадрирование)" className="w-64">
+    <Page>
+      <PageHeader title="Сравнение примеров" meta={rows.length > 0 ? `${rows.length} сообщений` : undefined} />
+      <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <InlineField label="Интерпретация">
           <Select
+            className="w-48"
             value={versionId}
             onChange={(e) => {
               setVersionOverride(e.target.value);
@@ -99,9 +98,10 @@ export function ComparePage() {
               </option>
             ))}
           </Select>
-        </Field>
-        <Field label="Тип сообщения" className="w-64">
+        </InlineField>
+        <InlineField label="Тип сообщения">
           <Select
+            className="w-52"
             value={ruleId}
             onChange={(e) => {
               setRuleOverride(e.target.value);
@@ -114,9 +114,10 @@ export function ComparePage() {
               </option>
             ))}
           </Select>
-        </Field>
-        <Field label="Сопоставить с" className="w-56">
+        </InlineField>
+        <InlineField label="Сопоставить с">
           <Select
+            className="w-48"
             value={activePath}
             onChange={(e) => {
               setParamPath(e.target.value);
@@ -130,8 +131,7 @@ export function ComparePage() {
               </option>
             ))}
           </Select>
-        </Field>
-        <span className="mb-2 text-xs text-muted">{rows.length} сообщений</span>
+        </InlineField>
       </div>
 
       {!versionId && !interpretations.isLoading && (
@@ -141,22 +141,19 @@ export function ComparePage() {
       {messages.error && <ErrorState error={messages.error} onRetry={messages.refetch} />}
 
       {rows.length > 0 && (
-        <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
-          <div className="min-w-0">
+        <div className="flex flex-col items-start gap-6 xl:flex-row">
+          <div className="min-w-0 max-w-full">
             <CompareMatrix
               rows={rows}
               stats={stats}
               paramLabel={activePath.split('.')[1] ?? 'параметр'}
               highlight={picked ? { offset: picked.offset, length: ENCODING_SIZE[picked.encoding] } : null}
             />
-            <p className="mt-2 text-[11.5px] text-subtle">
-              Цвет номера столбца: <span className="text-subtle">константа</span> · <span className="text-fg">различается</span> ·{' '}
-              <span className="text-info">есть не во всех сообщениях</span>
-            </p>
+            <HeatLegend className="mt-2" />
           </div>
-          <Pane className="self-start">
+          <Pane className="w-full shrink-0 xl:w-[360px]">
             <PaneHeader title="Кандидаты в поля" />
-            <div className="p-3">
+            <div>
               <CandidateList
                 search={search}
                 rowLabels={rows.map((r) => r.label)}

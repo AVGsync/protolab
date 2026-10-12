@@ -133,13 +133,13 @@ function Converter({ bytes, unknownMask, segments, selection, cursor, values }: 
               </p>
               <CopyButton value={toHexMasked(slice, sliceMask)} label="hex" />
             </div>
-            <p className="font-mono text-[12px] break-all">
+            <p className="font-mono text-xs break-all">
               {toHexMasked(slice.subarray(0, PREVIEW_LIMIT), sliceMask.subarray(0, PREVIEW_LIMIT))}
               {slice.length > PREVIEW_LIMIT && <span className="text-muted"> и ещё {slice.length - PREVIEW_LIMIT} Б</span>}
             </p>
-            <p className="font-mono text-[12px] break-all text-muted">{toAscii(slice.subarray(0, PREVIEW_LIMIT), '.', sliceMask)}</p>
+            <p className="font-mono text-xs break-all text-muted">{toAscii(slice.subarray(0, PREVIEW_LIMIT), '.', sliceMask)}</p>
           </div>
-          <table className="w-full border-collapse font-mono text-[12px]">
+          <table className="w-full border-collapse font-mono text-xs">
             <thead>
               <tr className="text-left text-xs text-muted">
                 <th className="h-6 border-b border-line font-normal" />
@@ -168,5 +168,5 @@ function Converter({ bytes, unknownMask, segments, selection, cursor, values }: 
 }
 
 function Cell({ value }: { value?: string }) {
-  return <td className={cn('text-right', value === undefined && 'text-subtle', value === '??' && 'text-unknown')}>{value ?? '—'}</td>;
+  return <td className={cn('text-right', value === undefined && 'text-muted', value === '??' && 'text-unknown')}>{value ?? '—'}</td>;
 }

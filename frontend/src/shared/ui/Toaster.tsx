@@ -21,7 +21,7 @@ export function Toaster() {
           className="pointer-events-auto flex items-start gap-2.5 rounded-ctl border border-line-strong bg-surface px-3 py-2 shadow-pop"
         >
           <i aria-hidden className={cn('mt-[7px] size-[7px] shrink-0', SQUARE[t.tone])} />
-          <p className="flex-1 text-[13px]">{t.message}</p>
+          <p className="flex-1 text-sm">{t.message}</p>
           <button type="button" onClick={() => dismiss(t.id)} className="mt-0.5 text-muted hover:text-fg" aria-label="Закрыть">
             <XIcon size={12} />
           </button>

@@ -21,7 +21,7 @@ export function CopyButton({ value, label, className }: { value: string; label?:
       type="button"
       onClick={copy}
       title="Скопировать"
-      className={cn('inline-flex items-center gap-1 rounded-ctl px-1 text-subtle hover:bg-surface-2 hover:text-fg', className)}
+      className={cn('inline-flex items-center gap-1 rounded-ctl px-1 text-muted hover:bg-surface-2 hover:text-fg', className)}
     >
       {copied ? <CheckIcon size={12} className="text-ok" /> : <CopyIcon size={12} />}
       {label && <span className="text-xs">{label}</span>}

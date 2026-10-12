@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { corpusQueries, describeCorpusFilter } from '@/entities/corpus';
-import { RunStatusMark, StaleTag, verificationQueries } from '@/entities/verification';
+import { RunOutcome, RunStatusMark, StaleTag, verificationQueries } from '@/entities/verification';
 import { CreateCorpusButton } from '@/features/create-corpus';
 import { StartRunButton } from '@/features/run-verification';
 import { routes } from '@/shared/config';
@@ -29,23 +29,35 @@ export function VerificationPage() {
         }
       />
 
-      <Pane className="mb-5">
+      <Pane className="mb-4">
         <PaneHeader title="Корпуса" />
         {corpora.isLoading && <Loader />}
-        <div className="grid gap-3 p-4 md:grid-cols-3">
-          {corpora.data?.items.map((c) => (
-            <div key={c.id} className="border border-line bg-bg px-3 py-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-medium">{c.name}</p>
-                <Tag>{c.sessionIds.length} сес.</Tag>
-              </div>
-              <p className="mt-0.5 text-[12px] text-muted">{c.description}</p>
-              <p className="mt-1.5 text-[11px] text-subtle">{describeCorpusFilter(c.filter).join(' · ')}</p>
-              <p className="font-mono text-[10.5px] text-subtle">hash {shortHash(c.hash, 12)}</p>
-            </div>
-          ))}
-          {corpora.data?.items.length === 0 && <p className="text-xs text-muted">Создайте корпус для проверки.</p>}
-        </div>
+        {corpora.data && corpora.data.items.length === 0 && <p className="px-3 py-3 text-xs text-muted">Создайте корпус для проверки.</p>}
+        {corpora.data && corpora.data.items.length > 0 && (
+          <Table>
+            <THead>
+              <tr>
+                <Th>Корпус</Th>
+                <Th className="text-right">Сессий</Th>
+                <Th>Отбор</Th>
+                <Th>Хеш</Th>
+              </tr>
+            </THead>
+            <TBody>
+              {corpora.data.items.map((c) => (
+                <Tr key={c.id}>
+                  <Td title={c.description}>
+                    <span className="font-medium">{c.name}</span>
+                    {c.description && <span className="ml-3 hidden max-w-[42ch] truncate align-bottom text-xs text-muted xl:inline-block">{c.description}</span>}
+                  </Td>
+                  <Td className="text-right font-mono text-xs">{c.sessionIds.length}</Td>
+                  <Td className="text-xs text-muted">{describeCorpusFilter(c.filter).join(' · ')}</Td>
+                  <Td className="font-mono text-xs text-muted">{shortHash(c.hash, 12)}</Td>
+                </Tr>
+              ))}
+            </TBody>
+          </Table>
+        )}
       </Pane>
 
       <Pane>
@@ -60,37 +72,29 @@ export function VerificationPage() {
                 <Th>Проверка</Th>
                 <Th>Интерпретация</Th>
                 <Th>Корпус</Th>
-                <Th className="text-right">Сообщ.</Th>
-                <Th className="text-right">OK</Th>
-                <Th className="text-right">Наруш.</Th>
-                <Th className="text-right">Неполн.</Th>
-                <Th className="text-right">Неизв.</Th>
-                <Th>Состояние</Th>
+                <Th title="Сообщений в корпусе и доли: разобрано, нарушения, неполные, неизвестный тип">Результат</Th>
+                <Th />
                 <Th>Запуск</Th>
               </tr>
             </THead>
             <TBody>
               {runs.data.items.map((r) => (
                 <Tr key={r.id} onClick={() => navigate(routes.run(projectId, r.id))}>
-                  <Td className="font-mono text-[12px]">{r.id}</Td>
+                  <Td className="font-mono text-xs">{r.id}</Td>
                   <Td>
                     {r.interpretationName} <Tag>v{r.version}</Tag>
                   </Td>
-                  <Td className="text-[12.5px]">{r.corpusName}</Td>
-                  <Td className="text-right font-mono">{r.summary?.messages ?? '—'}</Td>
-                  <Td className="text-right font-mono text-ok">{r.summary?.ok ?? ''}</Td>
-                  <Td className="text-right font-mono text-danger">{r.summary?.violations || ''}</Td>
-                  <Td className="text-right font-mono text-warn">{r.summary?.partial || ''}</Td>
-                  <Td className="text-right font-mono text-muted">{r.summary?.unknownType || ''}</Td>
+                  <Td className="text-xs">{r.corpusName}</Td>
+                  <Td>{r.summary ? <RunOutcome summary={r.summary} /> : <span className="text-muted">—</span>}</Td>
                   <Td>
                     <span className="flex flex-wrap gap-1">
                       <RunStatusMark status={r.status} />
                       {r.stale && <StaleTag reasons={r.staleReasons} />}
                     </span>
                   </Td>
-                  <Td className="text-[12px] whitespace-nowrap text-muted">
+                  <Td className="text-xs whitespace-nowrap text-muted">
                     {formatDateTime(r.startedAt)}
-                    {r.durationMs !== undefined && <div className="text-[11px] text-subtle">{formatDuration(r.durationMs)}</div>}
+                    {r.durationMs !== undefined && <span className="ml-2 font-mono">{formatDuration(r.durationMs)}</span>}
                   </Td>
                 </Tr>
               ))}

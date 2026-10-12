@@ -1,14 +1,16 @@
 export { buttonClass, type ButtonVariant } from './button-styles';
 export { Button, type ButtonProps } from './Button';
 export { CopyButton } from './CopyButton';
+export { Disclosure, type DisclosureProps } from './Disclosure';
 export { DownloadButton } from './DownloadButton';
 export { EmptyState, ErrorState, Loader, Note, Progress } from './Feedback';
 export { FileButton } from './FileButton';
 export { fieldLaneClass, fieldSwatchClass, fieldTone, fieldUnderline, FIELD_TONES } from './field-palette';
-export { Checkbox, Field, Input, Select, Textarea } from './Form';
+export { Checkbox, Field, InlineField, Input, Select, Textarea } from './Form';
 export { KeyValue, Mono, Page, PageHeader, Pane, PaneHeader, Readout, SectionTitle } from './Layout';
 export { Modal } from './Modal';
 export { Segmented, type SegmentedItem } from './Segmented';
+export { StackBar, type StackBarPart } from './StackBar';
 export { Arrow, Keycap, Status, Tag, type Tone } from './Status';
 export { Table, TBody, Td, Th, THead, Tr } from './Table';
 export { TabNav, Tabs, type TabNavItem } from './Tabs';

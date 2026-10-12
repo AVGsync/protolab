@@ -127,11 +127,11 @@ export function CreateCorpusButton({ projectId }: { projectId: string }) {
                         onChange={() => setExcluded((ids) => (ids.includes(s.id) ? ids.filter((x) => x !== s.id) : [...ids, s.id]))}
                       />
                     </Td>
-                    <Td className="font-mono text-[12px]">{s.id}</Td>
+                    <Td className="font-mono text-xs">{s.id}</Td>
                     <Td>
                       <EndpointPair client={s.client} server={s.server} />
                     </Td>
-                    <Td className="font-mono text-[12px] text-muted">{formatTimestamp(s.startedAt, 3)}</Td>
+                    <Td className="font-mono text-xs text-muted">{formatTimestamp(s.startedAt, 3)}</Td>
                     <Td className="text-muted">{actionLabel.get(s.id) ?? '—'}</Td>
                     <Td>
                       <SessionStatusMark status={s.status} />

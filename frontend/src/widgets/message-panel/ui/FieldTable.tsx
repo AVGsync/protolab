@@ -16,7 +16,11 @@ export interface FieldTableProps {
 
 const sameRange = (a: ByteRange | null, b: ByteRange) => a !== null && a.offset === b.offset && a.length === b.length;
 
-/** Parsed fields: derived by rules vs. left as a hypothesis. Hovering a row lights up its bytes, a click selects them. */
+/**
+ * Parsed fields: derived by rules vs. left as a hypothesis. Hovering a row lights up its bytes, a click selects them.
+ * A field is one line (name, offset, type, value); what it means goes on a quiet second line, so the
+ * columns never squeeze the text.
+ */
 export function FieldTable({ message, selection, link, onSelectRange, onLink }: FieldTableProps) {
   return (
     <div className="flex flex-col gap-2">
@@ -29,21 +33,15 @@ export function FieldTable({ message, selection, link, onSelectRange, onLink }: 
           ))}
         </ul>
       )}
-      <table className="w-full border-collapse text-[12px]">
+      <table className="w-full border-collapse text-xs">
         <thead>
-          <tr className="text-left text-xs text-muted">
+          <tr className="legend text-left text-muted">
             <th className="h-6 border-b border-line pr-3 font-normal">Поле</th>
             <th className="h-6 border-b border-line pr-2 text-right font-normal" title="Смещение в сообщении">
               @
             </th>
             <th className="h-6 border-b border-line px-2 font-normal">Тип</th>
             <th className="h-6 border-b border-line pr-2 font-normal">Значение</th>
-            <th
-              className="h-6 border-b border-line font-normal"
-              title="Зелёный квадрат: назначение подтверждено. Оранжевый: гипотеза. Без квадрата: описана только структура."
-            >
-              Смысл
-            </th>
           </tr>
         </thead>
         <tbody>
@@ -61,7 +59,7 @@ export function FieldTable({ message, selection, link, onSelectRange, onLink }: 
                 <td className="py-1.5 pr-2 pl-4">не описано</td>
                 <td className="pr-2 text-right font-mono">{u.offset}</td>
                 <td className="px-2 font-mono">{u.length} Б</td>
-                <td colSpan={2} />
+                <td />
               </tr>
             );
           })}
@@ -85,21 +83,26 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
   const selected = sameRange(selection, range);
   const linked = link?.messageIndex === message.index && link.path === field.path;
   const violation = field.status === 'violation';
+  const status = field.type === 'struct' ? undefined : field.meaningStatus;
+  const hasMeaning = !!field.meaning || status === 'hypothesis';
+  // The second line (meaning, issue) belongs to the same field: it shares the highlight and the bottom rule.
+  const tail = hasMeaning || !!field.issue;
+  const rowClass = cn(
+    'cursor-pointer align-top',
+    selected ? 'bg-selection' : linked && 'bg-surface-2',
+    violation && 'text-danger',
+  );
+  const indent = 16 + depth * 12;
+  const hover = {
+    onClick: () => onSelectRange(range),
+    onMouseEnter: () => onLink({ messageIndex: message.index, path: field.path, range }),
+    onMouseLeave: () => onLink(null),
+  };
 
   return (
     <>
-      <tr
-        onClick={() => onSelectRange(range)}
-        onMouseEnter={() => onLink({ messageIndex: message.index, path: field.path, range })}
-        onMouseLeave={() => onLink(null)}
-        className={cn(
-          'cursor-pointer align-top',
-          !field.issue && 'border-b border-line',
-          selected ? 'bg-selection' : linked && 'bg-surface-2',
-          violation && 'text-danger',
-        )}
-      >
-        <td className="py-1.5 pr-3 whitespace-nowrap" style={{ paddingLeft: 16 + depth * 12 }}>
+      <tr {...hover} className={cn(rowClass, !tail && 'border-b border-line')}>
+        <td className="pt-1.5 pr-3 whitespace-nowrap" style={{ paddingLeft: indent }}>
           <span className="relative inline-flex items-center gap-2">
             {children.length > 0 ? (
               <button
@@ -118,22 +121,17 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
             <span className={cn('font-mono', depth > 0 && 'text-muted')}>{field.name}</span>
           </span>
         </td>
-        <td className="py-1.5 pr-2 text-right font-mono text-muted">{field.offset}</td>
-        <td className="px-2 py-1.5 font-mono whitespace-nowrap text-muted">{field.type}</td>
-        <td className="py-1.5 pr-2">
+        <td className="pt-1.5 pr-2 text-right font-mono text-muted">{field.offset}</td>
+        <td className="px-2 pt-1.5 font-mono whitespace-nowrap text-muted">{field.type}</td>
+        <td className="pt-1.5 pr-2">
           <span className={cn('font-mono whitespace-nowrap', field.status === 'unknown' && 'text-warn')}>{field.display}</span>
         </td>
-        <td className="py-1.5 pr-4">
-          <Meaning field={field} violation={violation} />
-        </td>
       </tr>
-      {field.issue && (
-        <tr
-          onClick={() => onSelectRange(range)}
-          className={cn('cursor-pointer border-b border-line text-[11px] text-danger', selected ? 'bg-selection' : linked && 'bg-surface-2')}
-        >
-          <td colSpan={5} className="pr-4 pb-1.5" style={{ paddingLeft: 16 + depth * 12 }}>
-            {field.issue}
+      {tail && (
+        <tr {...hover} className={cn(rowClass, 'border-b border-line')}>
+          <td colSpan={4} className="pr-2 pb-1.5 text-2xs leading-4" style={{ paddingLeft: indent + (depth === 0 ? 16 : 0) }}>
+            {field.issue && <p className="text-danger">{field.issue}</p>}
+            {hasMeaning && <Meaning field={field} status={status} violation={violation} />}
           </td>
         </tr>
       )}
@@ -146,13 +144,11 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
 }
 
 /** Confirmed meaning is a quiet green square; a hypothesis also says so in words; structure alone is silent. */
-function Meaning({ field, violation }: { field: ParsedField; violation: boolean }) {
-  const status = field.type === 'struct' ? undefined : field.meaningStatus;
-  if (!field.meaning && status !== 'hypothesis') return null;
+function Meaning({ field, status, violation }: { field: ParsedField; status: ParsedField['meaningStatus']; violation: boolean }) {
   return (
     <span className="inline-flex items-start gap-1.5">
-      {status === 'confirmed' && <i aria-hidden title="Назначение подтверждено" className="mt-[7px] size-[7px] shrink-0 bg-ok" />}
-      {status === 'hypothesis' && <i aria-hidden title="Назначение: непроверенная гипотеза" className="mt-[7px] size-[7px] shrink-0 bg-warn" />}
+      {status === 'confirmed' && <i aria-hidden title="Назначение подтверждено" className="mt-[5px] size-[7px] shrink-0 bg-ok" />}
+      {status === 'hypothesis' && <i aria-hidden title="Назначение: непроверенная гипотеза" className="mt-[5px] size-[7px] shrink-0 bg-warn" />}
       <span className={violation ? '' : 'text-muted'}>
         {field.meaning}
         {status === 'hypothesis' && <span className="ml-1.5 text-fg">гипотеза</span>}

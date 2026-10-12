@@ -106,7 +106,7 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
+      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2">
         {interpretations.length > 1 ? (
           <Select
             value={interp.id}
@@ -136,14 +136,11 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
             </option>
           ))}
         </Select>
-        <span className="font-mono text-[11px] text-subtle" title={version.hash}>
-          sha256 {shortHash(version.hash, 12)}
+        <span className="font-mono text-2xs text-muted" title={`sha256 ${version.hash}`}>
+          {shortHash(version.hash, 12)}
         </span>
         {draft.dirty && <Status tone="warn">есть несохранённые изменения</Status>}
         <div className="ml-auto flex items-center gap-2">
-          <DownloadButton href={interpretationApi.exportUrl(version.id)} fileName={`${interp.name}.v${version.version}.json`}>
-            JSON
-          </DownloadButton>
           <CreateInterpretationButton projectId={projectId} variant="ghost" label="Новая" />
           <StartRunButton projectId={projectId} defaultVersionId={version.id} variant="secondary" label="Проверить" />
           <SaveVersionButton
@@ -198,8 +195,8 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
                   <li key={v.id} className={cn('flex items-start gap-3 px-3 py-2.5', v.id === version.id && 'bg-selection')}>
                     <Tag>v{v.version}</Tag>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[12.5px]">{v.comment}</p>
-                      <p className="font-mono text-[11px] text-subtle">
+                      <p className="text-xs">{v.comment}</p>
+                      <p className="font-mono text-2xs text-muted">
                         {formatDateTime(v.createdAt)} · {shortHash(v.hash, 16)}
                       </p>
                     </div>
@@ -209,6 +206,14 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
                         открыть
                       </Link>
                     )}
+                    <DownloadButton
+                      href={interpretationApi.exportUrl(v.id)}
+                      fileName={`${interp.name}.v${v.version}.json`}
+                      variant="ghost"
+                      size="xs"
+                    >
+                      JSON
+                    </DownloadButton>
                   </li>
                 ))}
               </ul>
@@ -217,33 +222,36 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
         </section>
 
         <section className="flex min-h-0 flex-col">
-          <div className="flex items-center gap-2 border-b border-line px-3 py-2">
-            <span className="text-[13px] font-medium">Предпросмотр черновика</span>
+          <div className="flex h-9 shrink-0 items-center gap-3 border-b border-line px-3">
+            <span className="text-sm font-medium">Предпросмотр</span>
+            {valid && (
+              <span className="flex items-center gap-3 text-xs">
+                {Object.entries(counts).map(([status, n]) => (
+                  <Status key={status} tone={status === 'ok' ? 'ok' : status === 'violation' ? 'danger' : 'warn'}>
+                    {status} <span className="font-mono">{n}</span>
+                  </Status>
+                ))}
+              </span>
+            )}
             <Select
               value={sessionId}
               onChange={(e) => {
                 setSessionOverride(e.target.value);
                 setActiveIndex(null);
               }}
-              className="ml-auto w-64"
+              className="ml-auto w-36"
+              aria-label="Сессия для предпросмотра"
             >
               {sessions.data?.items.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.id} · {s.capture.fileName}
+                <option key={s.id} value={s.id} title={s.capture.fileName}>
+                  {s.id}
                 </option>
               ))}
             </Select>
           </div>
-          <div className="flex flex-wrap gap-1.5 border-b border-line px-3 py-2">
-            {Object.entries(counts).map(([status, n]) => (
-              <Status key={status} tone={status === 'ok' ? 'ok' : status === 'violation' ? 'danger' : 'warn'} className="text-xs">
-                {status}: {n}
-              </Status>
-            ))}
-            {!valid && <span className="text-xs text-muted">Предпросмотр появится, когда спецификация станет корректной.</span>}
-          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {preview.isFetching && !preview.data && <Loader />}
+            {!valid && <EmptyState title="Предпросмотра нет" description="Он появится, когда спецификация станет корректной." />}
+            {valid && preview.isFetching && !preview.data && <Loader />}
             {preview.error && <ErrorState error={preview.error} />}
             <MessageList messages={messages} activeIndex={activeIndex} onSelect={(m) => setActiveIndex(m.index)} />
             {active && (

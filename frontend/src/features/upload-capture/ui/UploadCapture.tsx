@@ -34,15 +34,14 @@ export function CaptureDropzone({ projectId, className }: { projectId: string; c
       onDragLeave={() => setOver(false)}
       onDrop={onDrop}
       className={cn(
-        'relative flex flex-col items-center justify-center gap-2 border border-dashed px-6 py-14 text-center transition-colors',
+        'flex flex-col items-center justify-center gap-2 border border-dashed px-6 py-14 text-center transition-colors',
         over ? 'border-fg' : 'border-line-strong',
         className,
       )}
     >
-      <div aria-hidden className="bg-graph absolute inset-0" />
-      <p className="relative font-medium">Перетащите PCAP / PCAPNG сюда</p>
-      <p className="relative text-xs text-muted">Ethernet и TCP/IPv4. Исходный файл сохраняется без изменений.</p>
-      <div className="relative mt-2">
+      <p className="font-medium">Перетащите PCAP / PCAPNG сюда</p>
+      <p className="text-xs text-muted">Ethernet и TCP/IPv4. Исходный файл сохраняется без изменений.</p>
+      <div className="mt-2">
         <UploadCaptureButton projectId={projectId} />
       </div>
     </div>

@@ -12,7 +12,7 @@ export function SourceRefLink({ projectId, source, versionId }: { projectId: str
         sel: { offset: source.offset, length: source.length },
         v: versionId,
       })}
-      className="link font-mono text-xs"
+      className="link font-mono text-xs whitespace-nowrap"
       title={`Захват ${source.captureId} (sha256 ${source.captureSha256.slice(0, 12)}…), пакеты #${source.packetNumbers.join(', #')}`}
     >
       {source.sessionId}/{source.direction} {formatRange(source)}

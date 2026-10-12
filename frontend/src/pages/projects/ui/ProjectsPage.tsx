@@ -8,7 +8,7 @@ import { formatDateTime } from '@/shared/lib';
 import { EmptyState, ErrorState, Loader, Page, PageHeader, Pane, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
 function Count({ value }: { value: number }) {
-  return <Td className={value === 0 ? 'text-right font-mono text-subtle' : 'text-right font-mono'}>{value}</Td>;
+  return <Td className={value === 0 ? 'text-right font-mono text-muted' : 'text-right font-mono'}>{value}</Td>;
 }
 
 export function ProjectsPage() {
@@ -60,7 +60,7 @@ export function ProjectsPage() {
                       <span className="max-w-[48ch] truncate text-muted">{p.description}</span>
                     </div>
                   </Td>
-                  <Td className="font-mono text-xs text-subtle">{p.id}</Td>
+                  <Td className="font-mono text-xs text-muted">{p.id}</Td>
                   <Count value={p.stats.captures} />
                   <Count value={p.stats.sessions} />
                   <Count value={p.stats.hypotheses} />

@@ -9,12 +9,12 @@ export interface TabItem<T extends string> {
   count?: ReactNode;
 }
 
-const tabBase = '-mb-px inline-flex h-8 items-center gap-1.5 border-b-2 px-2.5 text-[13px] whitespace-nowrap transition-colors';
+const tabBase = '-mb-px inline-flex h-8 items-center gap-1.5 border-b-2 px-2.5 text-sm whitespace-nowrap transition-colors';
 const tabClass = (active: boolean) =>
   cn(tabBase, active ? 'border-fg font-medium text-fg' : 'border-transparent text-muted hover:text-fg');
 
 function Count({ children }: { children: ReactNode }) {
-  return <span className="font-mono text-[11px] font-normal text-muted">{children}</span>;
+  return <span className="font-mono text-2xs font-normal text-muted">{children}</span>;
 }
 
 export interface TabsProps<T extends string> {

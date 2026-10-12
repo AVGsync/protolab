@@ -6,7 +6,7 @@ export function VersionLabel({ version, hash, name }: { version: number; hash?: 
     <span className="inline-flex items-center gap-1.5">
       {name && <span>{name}</span>}
       <Tag>v{version}</Tag>
-      {hash && <span className="font-mono text-[11px] text-subtle">{shortHash(hash, 8)}</span>}
+      {hash && <span className="font-mono text-2xs text-muted">{shortHash(hash, 8)}</span>}
     </span>
   );
 }

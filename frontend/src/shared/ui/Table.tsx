@@ -5,7 +5,7 @@ import { cn } from '../lib/cn';
 export function Table({ className, ...rest }: HTMLAttributes<HTMLTableElement>) {
   return (
     <div className="w-full overflow-x-auto">
-      <table className={cn('w-full border-collapse text-left text-[13px]', className)} {...rest} />
+      <table className={cn('w-full border-collapse text-left text-sm', className)} {...rest} />
     </div>
   );
 }
@@ -38,7 +38,7 @@ export function Tr({ className, selected, onClick, ...rest }: TrProps) {
 }
 
 export function Th({ className, ...rest }: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn('h-7 border-b border-line px-3 text-xs font-normal whitespace-nowrap text-muted', className)} {...rest} />;
+  return <th className={cn('legend h-7 border-b border-line px-3 text-xs font-normal whitespace-nowrap text-muted', className)} {...rest} />;
 }
 
 export function Td({ className, ...rest }: TdHTMLAttributes<HTMLTableCellElement>) {

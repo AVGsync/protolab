@@ -3,7 +3,7 @@ import type { ComponentProps, InputHTMLAttributes, ReactNode, TextareaHTMLAttrib
 import { cn } from '../lib/cn';
 
 const control =
-  'rounded-ctl border border-line-strong bg-bg px-2 text-[13px] text-fg placeholder:text-subtle ' +
+  'rounded-ctl border border-line-strong bg-bg px-2 text-sm text-fg placeholder:text-muted ' +
   'transition-colors hover:border-muted disabled:opacity-50';
 
 export interface FieldProps {
@@ -19,7 +19,17 @@ export function Field({ label, hint, error, className, children }: FieldProps) {
     <label className={cn('flex flex-col gap-1', className)}>
       <span className="text-xs text-muted">{label}</span>
       {children}
-      {error ? <span className="text-xs text-danger">{error}</span> : hint && <span className="text-xs text-subtle">{hint}</span>}
+      {error ? <span className="text-xs text-danger">{error}</span> : hint && <span className="text-xs text-muted">{hint}</span>}
+    </label>
+  );
+}
+
+/** Label and control on one line: for toolbars, where a label above every control would double the height. */
+export function InlineField({ label, className, children }: Omit<FieldProps, 'hint' | 'error'>) {
+  return (
+    <label className={cn('flex items-center gap-2', className)}>
+      <span className="legend shrink-0 text-xs text-muted">{label}</span>
+      {children}
     </label>
   );
 }
@@ -50,7 +60,7 @@ export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement
 
 export function Checkbox({ label, className, ...rest }: CheckboxProps) {
   return (
-    <label className={cn('inline-flex cursor-pointer items-center gap-2 text-[13px] select-none', className)}>
+    <label className={cn('inline-flex cursor-pointer items-center gap-2 text-sm select-none', className)}>
       <input type="checkbox" className="size-3.5 accent-fg" {...rest} />
       <span>{label}</span>
     </label>

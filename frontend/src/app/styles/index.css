@@ -4,29 +4,35 @@
  * Design system «Стенд»: ProtoLab as a bench instrument (a logic analyzer for TCP).
  * Raw values live in --pl-* on :root[data-theme]; Tailwind sees them through `@theme inline`.
  * The theme attribute is set before first paint by the inline script in index.html.
+ * Rationale and references: docs/design.md.
+ *
+ * Colour roles (one job each, never mixed):
+ *   neutrals  bg / surface / surface-2 / line / line-strong / fg / muted   (structure and text)
+ *   accent    ONE signal orange: "where I am" (section marker), focus ring, hex cursor, live progress
+ *   status    ok / warn / danger / unknown: verification outcome and capture health, never decoration
+ *   channel   ch-c2s (amber) / ch-s2c (cyan): direction of a stream, after oscilloscope channel colours
+ *   field     field-1..4 underlines and lane tints: which bytes belong to which field
+ *   heat      heat-0..5: how much a byte column varies between examples
  */
 :root,
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --pl-bg: #0e1110;
-  --pl-surface: #141816;
-  --pl-surface-2: #1b201d;
-  --pl-line: #29302b;
-  --pl-line-strong: #6a746d;
-  --pl-text: #e2e6e0;
-  --pl-muted: #8d958e;
-  --pl-subtle: #838b85;
-  --pl-accent: #ec3b61;
-  --pl-accent-2: #f47a2c;
+  --pl-bg: #101112;
+  --pl-surface: #161718;
+  --pl-surface-2: #1d1f20;
+  --pl-line: #2b2e30;
+  --pl-line-strong: #5e6469;
+  --pl-text: #e6e7e4;
+  --pl-muted: #8e9296;
+  --pl-accent: #ff6a2b;
   --pl-ok: #76c893;
-  --pl-warn: #f0a044;
+  --pl-warn: #e5a93b;
   --pl-danger: #ff5c6a;
   --pl-info: #94a9c2;
-  --pl-selection: #22444a;
-  --pl-unknown: #7f8781;
+  --pl-selection: #243b42;
+  --pl-unknown: #868a8e;
   --pl-scrim: rgb(0 0 0 / 0.6);
   --pl-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
-  --pl-grain-opacity: 0.05;
 
   /* Channels: CH1 amber = client to server, CH2 cyan = server to client. */
   --pl-ch-c2s: #e8c450;
@@ -42,10 +48,10 @@
   --pl-field-lane-3: #452d3a;
   --pl-field-lane-4: #353535;
 
-  /* Variability scale: constant (0) to changes every time (5). Text flips from fg to bg at 3. */
-  --pl-heat-0: #2c2424;
-  --pl-heat-1: #692b37;
-  --pl-heat-2: #ab2f3f;
+  /* Variability scale: constant (0) to changes every time (5). */
+  --pl-heat-0: #2e3032;
+  --pl-heat-1: #5c3a40;
+  --pl-heat-2: #a03a45;
   --pl-heat-3: #dd5230;
   --pl-heat-4: #f28e42;
   --pl-heat-5: #f8c885;
@@ -53,27 +59,24 @@
 
 :root[data-theme='light'] {
   color-scheme: light;
-  --pl-bg: #edefeb;
-  --pl-surface: #fafbf8;
-  --pl-surface-2: #f2f4f0;
-  --pl-line: #d3d8d2;
-  --pl-line-strong: #7c847d;
-  --pl-text: #161a18;
-  --pl-muted: #58605a;
-  --pl-subtle: #646c66;
-  --pl-accent: #c8173f;
-  --pl-accent-2: #b5470f;
-  --pl-ok: #2d7a4c;
-  --pl-warn: #9a5800;
+  --pl-bg: #eceae5;
+  --pl-surface: #f8f7f3;
+  --pl-surface-2: #f0eee9;
+  --pl-line: #d6d3cc;
+  --pl-line-strong: #8a867e;
+  --pl-text: #1a1a18;
+  --pl-muted: #5c5a55;
+  --pl-accent: #b83a08;
+  --pl-ok: #266b43;
+  --pl-warn: #8f5b00;
   --pl-danger: #c21f36;
   --pl-info: #3f5f82;
-  --pl-selection: #cfe6e8;
-  --pl-unknown: #646c66;
-  --pl-scrim: rgb(22 26 24 / 0.35);
-  --pl-shadow: 0 8px 24px rgb(22 26 24 / 0.12);
-  --pl-grain-opacity: 0.04;
+  --pl-selection: #d4e6e8;
+  --pl-unknown: #5c5a55;
+  --pl-scrim: rgb(26 26 24 / 0.35);
+  --pl-shadow: 0 8px 24px rgb(26 26 24 / 0.12);
 
-  --pl-ch-c2s: #8c6400;
+  --pl-ch-c2s: #86600a;
   --pl-ch-s2c: #007380;
 
   --pl-field-1: #2b6ea1;
@@ -85,12 +88,12 @@
   --pl-field-lane-3: #f8e0ec;
   --pl-field-lane-4: #e8e8e8;
 
-  --pl-heat-0: #e4e0dd;
-  --pl-heat-1: #f3cdbf;
+  --pl-heat-0: #e4e1db;
+  --pl-heat-1: #f3d2c4;
   --pl-heat-2: #ee9e88;
-  --pl-heat-3: #be3824;
+  --pl-heat-3: #d4472a;
   --pl-heat-4: #98201f;
-  --pl-heat-5: #62101f;
+  --pl-heat-5: #5c101f;
 }
 
 @theme inline {
@@ -108,9 +111,7 @@
   --color-line-strong: var(--pl-line-strong);
   --color-fg: var(--pl-text);
   --color-muted: var(--pl-muted);
-  --color-subtle: var(--pl-subtle);
   --color-accent: var(--pl-accent);
-  --color-accent-2: var(--pl-accent-2);
   --color-ok: var(--pl-ok);
   --color-warn: var(--pl-warn);
   --color-danger: var(--pl-danger);
@@ -134,6 +135,26 @@
   --color-heat-3: var(--pl-heat-3);
   --color-heat-4: var(--pl-heat-4);
   --color-heat-5: var(--pl-heat-5);
+
+  /*
+   * Type scale: five steps, no arbitrary pixel sizes in components.
+   *   2xs 11  tags, counts, captions, ruler ticks
+   *   xs  12  secondary text, data in tables
+   *   sm  13  body (default)
+   *   lg  16  page title
+   *   xl  20  one key readout per screen
+   * The hex grid uses its own 13px mono so that the 26px cell geometry stays fixed.
+   */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
 
   /* Controls get 3px, panes and tables stay square. */
   --radius-ctl: 3px;
@@ -168,7 +189,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-accent-2);
+    outline: 2px solid var(--color-accent);
     outline-offset: 1px;
   }
 
@@ -188,6 +209,12 @@
     font-variant-ligatures: none;
   }
 
+  /* Numbers in tables line up by digit, in the sans text too. */
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+  }
+
   button {
     cursor: pointer;
   }
@@ -197,6 +224,15 @@
   }
 }
 
+/*
+ * Legends: column heads, field labels, small captions. The same Plex Sans with the width axis pulled
+ * to 85 (the "silkscreen" next to a knob): narrower than the text, so Russian labels do not wrap.
+ */
+@utility legend {
+  font-stretch: 85%;
+  letter-spacing: 0.01em;
+}
+
 /* Unknown bytes (capture gaps): hatched, never rendered as 00. */
 @utility bg-hatch {
   background-image: repeating-linear-gradient(
@@ -204,39 +240,6 @@
     color-mix(in srgb, var(--color-unknown) 60%, transparent) 0 1px,
     transparent 1px 6px
   );
-}
-
-/* Graph paper (8px / 64px): empty states only, never behind dense data. */
-@utility bg-graph {
-  background-image:
-    linear-gradient(to right, var(--color-line) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--color-line) 1px, transparent 1px),
-    linear-gradient(to right, color-mix(in srgb, var(--color-line) 45%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--color-line) 45%, transparent) 1px, transparent 1px);
-  background-size:
-    64px 64px,
-    64px 64px,
-    8px 8px,
-    8px 8px;
-  background-position: -1px -1px;
-  mask-image: radial-gradient(ellipse at 50% 40%, #000 25%, transparent 80%);
-}
-
-/* Subtle film grain over the app shell (static, no blend mode: cheap to composite). */
-@utility bg-grain {
-  position: relative;
-  isolation: isolate;
-
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 100;
-    pointer-events: none;
-    opacity: var(--pl-grain-opacity);
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 160px 160px;
-  }
 }
 
 /* Text link: the same colour as text, a quiet underline that sharpens on hover. */

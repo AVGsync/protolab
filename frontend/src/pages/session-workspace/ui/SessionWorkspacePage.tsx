@@ -256,7 +256,7 @@ export function SessionWorkspacePage() {
                   />
                   {active && (
                     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-                      <h4 className="mb-1.5 text-[13px] font-semibold">
+                      <h4 className="mb-1.5 text-sm font-semibold">
                         Поля <span className="font-mono font-normal text-muted">#{active.index}</span>
                       </h4>
                       <FieldTable message={active} selection={selection} link={link} onSelectRange={(r) => select(r, { scroll: true })} onLink={setRowLink} />

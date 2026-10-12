@@ -86,6 +86,14 @@ describe('rulerTicks', () => {
     expect(ticks.slice(0, 3)).toEqual([0, 16, 32]);
   });
 
+  it('never puts two labels closer than the minimum gap (167 B once printed "160166")', () => {
+    for (const [length, width] of [[167, 900], [167, 500], [64, 700], [1000, 800]]) {
+      const ticks = rulerTicks(length, width);
+      const px = width / length;
+      for (let i = 1; i < ticks.length; i++) expect((ticks[i] - ticks[i - 1]) * px).toBeGreaterThanOrEqual(48 - 1e-9);
+    }
+  });
+
   it('degrades gracefully', () => {
     expect(rulerTicks(1, 500)).toEqual([0]);
     expect(rulerTicks(100, 0)).toEqual([0]);

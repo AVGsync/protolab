@@ -17,6 +17,9 @@ export function JobsIndicator() {
   const active = jobs.filter(isJobActive);
   const first = active[0];
 
+  // An empty "Задач нет" is permanent noise: the indicator exists only while there is something to show.
+  if (jobs.length === 0) return null;
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -27,13 +30,13 @@ export function JobsIndicator() {
       >
         {first ? (
           <>
-            <i aria-hidden className="size-[7px] animate-pulse bg-accent-2" />
+            <i aria-hidden className="size-[7px] animate-pulse bg-accent" />
             <span className="max-w-56 truncate">{first.title}</span>
             <span className="font-mono">{formatPercent(first.progress, 0)}</span>
             {active.length > 1 && <span className="font-mono text-muted">+{active.length - 1}</span>}
           </>
         ) : (
-          'Задач нет'
+          'Задачи'
         )}
       </button>
       {open && (
@@ -47,8 +50,8 @@ export function JobsIndicator() {
                 <li key={job.id} className="px-3 py-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-[13px]">{job.title}</p>
-                      <p className="font-mono text-[11px] text-muted">
+                      <p className="truncate text-sm">{job.title}</p>
+                      <p className="font-mono text-2xs text-muted">
                         {isJobActive(job) ? `${job.stage ?? ''} ${formatPercent(job.progress, 0)}` : formatDateTime(job.finishedAt ?? job.startedAt)}
                       </p>
                     </div>

@@ -34,13 +34,13 @@ export function SessionTable({ sessions, actions = [], onOpen }: SessionTablePro
         {sessions.map((s) => (
           <Tr key={s.id} onClick={() => onOpen(s)}>
             <Td>
-              <span className="inline-flex items-center gap-2 font-mono text-xs">
+              <span
+                className="inline-flex items-center gap-2 font-mono text-xs"
+                title={`tcp.stream ${s.index}, ${s.capture.fileName}`}
+              >
                 {s.id}
                 {!s.isTarget && <Tag title="Сессия не на целевом порту проекта">фон</Tag>}
               </span>
-              <div className="max-w-52 truncate font-mono text-[11px] text-subtle" title={s.capture.fileName}>
-                tcp.stream {s.index}, {s.capture.fileName}
-              </div>
             </Td>
             <Td>
               <EndpointPair client={s.client} server={s.server} />
@@ -54,7 +54,7 @@ export function SessionTable({ sessions, actions = [], onOpen }: SessionTablePro
               <span className="text-ch-c2s">{formatBytes(s.bytes.c2s)}</span> / <span className="text-ch-s2c">{formatBytes(s.bytes.s2c)}</span>
             </Td>
             <Td className="max-w-56 truncate text-xs">
-              {s.actionIds.map((id) => actionById.get(id)?.label).filter(Boolean).join(', ') || <span className="text-subtle">—</span>}
+              {s.actionIds.map((id) => actionById.get(id)?.label).filter(Boolean).join(', ') || <span className="text-muted">—</span>}
             </Td>
             <Td>
               {sessionAnomalies(s.flags, s.roles).length > 0 ? (
