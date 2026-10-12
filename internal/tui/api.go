@@ -2,7 +2,6 @@
 package tui
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -46,9 +45,6 @@ type Options struct {
 	CreateDemo func() error
 }
 
-// ErrNotTerminal is returned by Run when stdin or stdout is not a terminal;
-// the caller then falls back to plain logs.
+// ErrNotTerminal is returned by Run (before touching the terminal) when stdin or
+// stdout is not an interactive terminal; the caller falls back to plain output.
 var ErrNotTerminal = errors.New("tui: stdin/stdout is not a terminal")
-
-// Run shows the TUI until the user quits or ctx is cancelled.
-func Run(ctx context.Context, opt Options) error { panic("not implemented") }

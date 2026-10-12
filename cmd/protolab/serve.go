@@ -11,12 +11,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
+	"runtime/debug"
+	"runtime/metrics"
 	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/mattn/go-isatty"
+	"github.com/charmbracelet/x/term"
 
 	"github.com/AVGsync/protolab/internal/app"
 	"github.com/AVGsync/protolab/internal/browser"
@@ -81,7 +82,7 @@ func runServe(args []string) int {
 	if err != nil {
 		return fail("%v", err)
 	}
-	interactive := !f.noTUI && isatty.IsTerminal(os.Stdout.Fd()) && isatty.IsTerminal(os.Stdin.Fd())
+	interactive := !f.noTUI && term.IsTerminal(os.Stdout.Fd()) && term.IsTerminal(os.Stdin.Fd()) && os.Getenv("TERM") != "dumb"
 
 	level := slog.LevelInfo
 	if f.debug {
@@ -92,8 +93,9 @@ func runServe(args []string) int {
 	if interactive {
 		mirror = nil // the TUI shows the log panel instead
 	}
-	logger := slog.New(logx.NewHandler(ring, level, mirror))
-	slog.SetDefault(logger)
+	handler := logx.NewHandler(ring, level, mirror)
+	logger := slog.New(handler)
+	slog.SetDefault(logger) // also redirects the standard log package
 
 	limits := app.DefaultLimits()
 	limits.MaxCaptureBytes = f.maxCapMB << 20
@@ -127,6 +129,9 @@ func runServe(args []string) int {
 		Handler:           server.New(a, server.Options{Logger: logger, Static: webui.FS(), AllowAnyHost: !loopback}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
+		// net/http writes its own errors (TLS probes, broken connections) to
+		// stderr by default, which would draw over the TUI.
+		ErrorLog: slog.NewLogLogger(handler, slog.LevelWarn),
 	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
@@ -140,16 +145,18 @@ func runServe(args []string) int {
 
 	a.Preload()
 	if f.demo && len(a.ListProjects()) == 0 {
-		go func() {
+		safeGo(logger, "демо-проект", func() {
 			if _, err := a.CreateDemoProject(ctx); err != nil {
 				logger.Error("демо-проект", "err", err)
 			}
-		}()
+		})
 	}
 	if f.open {
-		if err := browser.Open(url); err != nil {
-			logger.Warn("не удалось открыть браузер", "err", err)
-		}
+		safeGo(logger, "браузер", func() {
+			if err := browser.Open(url); err != nil {
+				logger.Warn("не удалось открыть браузер", "err", err)
+			}
+		})
 	}
 
 	if interactive {
@@ -161,10 +168,17 @@ func runServe(args []string) int {
 				return err
 			},
 		})
-		if errors.Is(err, tui.ErrNotTerminal) {
+		switch {
+		case errors.Is(err, tui.ErrNotTerminal):
+			handler.SetMirror(os.Stderr)
 			interactive = false
-		} else if err != nil {
-			logger.Error("TUI", "err", err)
+		case err != nil:
+			// The server keeps working without the TUI until Ctrl+C.
+			logger.Error("терминальный интерфейс завершился с ошибкой", "err", err)
+			handler.SetMirror(os.Stderr)
+			interactive = false
+		default:
+			printExitSummary(ring)
 		}
 	}
 	if !interactive {
@@ -184,6 +198,37 @@ func runServe(args []string) int {
 	return 0
 }
 
+// safeGo runs fn in a goroutine and turns a panic into a log record: a panic
+// outside Bubble Tea's own goroutines would leave the terminal in raw mode.
+func safeGo(logger *slog.Logger, what string, fn func()) {
+	go func() {
+		defer func() {
+			if v := recover(); v != nil {
+				logger.Error("внутренняя ошибка", "task", what, "panic", v, "stack", string(debug.Stack()))
+			}
+		}()
+		fn()
+	}()
+}
+
+// printExitSummary repeats the warnings and errors of the session after the TUI
+// closed: the alternate screen took the log panel with it.
+func printExitSummary(ring *logx.Ring) {
+	var problems []logx.Line
+	for _, l := range ring.Lines() {
+		if l.Level == slog.LevelWarn.String() || l.Level == slog.LevelError.String() {
+			problems = append(problems, l)
+		}
+	}
+	if len(problems) > 10 {
+		problems = problems[len(problems)-10:]
+	}
+	for _, l := range problems {
+		fmt.Fprintf(os.Stderr, "%s %-5s %s\n", l.Time.Format("15:04:05"), l.Level, l.Message)
+	}
+	fmt.Fprintln(os.Stderr, "ProtoLab остановлен.")
+}
+
 // snapshotSource feeds the TUI.
 type snapshotSource struct {
 	app  *app.App
@@ -192,14 +237,12 @@ type snapshotSource struct {
 }
 
 func (s *snapshotSource) Snapshot() tui.Snapshot {
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
 	snap := tui.Snapshot{
 		Version:   version,
 		URL:       s.url,
 		DataDir:   s.app.DataDir(),
 		Jobs:      s.app.Jobs().List(8),
-		MemAlloc:  ms.HeapAlloc,
+		MemAlloc:  heapBytes(),
 		StartedAt: s.app.StartedAt(),
 	}
 	for _, p := range s.app.Summaries() {
@@ -209,4 +252,15 @@ func (s *snapshotSource) Snapshot() tui.Snapshot {
 		snap.Logs = append(snap.Logs, tui.LogLine{Time: l.Time, Level: l.Level, Message: l.Message})
 	}
 	return snap
+}
+
+// heapBytes reads the live heap size without the stop-the-world pause of
+// runtime.ReadMemStats (the TUI polls several times per second).
+func heapBytes() uint64 {
+	sample := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+	metrics.Read(sample)
+	if sample[0].Value.Kind() != metrics.KindUint64 {
+		return 0
+	}
+	return sample[0].Value.Uint64()
 }

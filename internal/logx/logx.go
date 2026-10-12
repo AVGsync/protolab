@@ -56,14 +56,28 @@ func (r *Ring) Lines() []Line {
 type Handler struct {
 	ring   *Ring
 	level  slog.Leveler
-	mirror io.Writer
-	mu     *sync.Mutex // guards mirror
+	mirror *mirrorWriter
 	attrs  []slog.Attr
 	groups []string
 }
 
 func NewHandler(ring *Ring, level slog.Leveler, mirror io.Writer) *Handler {
-	return &Handler{ring: ring, level: level, mirror: mirror, mu: &sync.Mutex{}}
+	return &Handler{ring: ring, level: level, mirror: &mirrorWriter{w: mirror}}
+}
+
+// mirrorWriter is shared by a handler and its WithAttrs/WithGroup copies, so
+// SetMirror affects all of them.
+type mirrorWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+// SetMirror starts (or, with nil, stops) copying records to w, for example
+// when the TUI stops and the log has to go to stderr instead.
+func (h *Handler) SetMirror(w io.Writer) {
+	h.mirror.mu.Lock()
+	h.mirror.w = w
+	h.mirror.mu.Unlock()
 }
 
 func (h *Handler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.level.Level() }
@@ -71,35 +85,42 @@ func (h *Handler) Enabled(_ context.Context, l slog.Level) bool { return l >= h.
 func (h *Handler) Handle(_ context.Context, r slog.Record) error {
 	var b strings.Builder
 	b.WriteString(r.Message)
-	write := func(a slog.Attr) bool {
-		if a.Equal(slog.Attr{}) {
-			return true
+	for _, a := range h.attrs { // already qualified by WithAttrs
+		fmt.Fprintf(&b, " %s=%v", a.Key, a.Value.Resolve())
+	}
+	r.Attrs(func(a slog.Attr) bool {
+		if !a.Equal(slog.Attr{}) {
+			fmt.Fprintf(&b, " %s=%v", h.qualify(a.Key), a.Value.Resolve())
 		}
-		key := a.Key
-		if len(h.groups) > 0 {
-			key = strings.Join(h.groups, ".") + "." + key
-		}
-		fmt.Fprintf(&b, " %s=%v", key, a.Value.Resolve())
 		return true
-	}
-	for _, a := range h.attrs {
-		write(a)
-	}
-	r.Attrs(write)
+	})
 
 	line := Line{Time: r.Time, Level: r.Level.String(), Message: b.String()}
 	h.ring.add(line)
-	if h.mirror != nil {
-		h.mu.Lock()
-		fmt.Fprintf(h.mirror, "%s %-5s %s\n", line.Time.Format("15:04:05"), line.Level, line.Message)
-		h.mu.Unlock()
+	h.mirror.mu.Lock()
+	if h.mirror.w != nil {
+		fmt.Fprintf(h.mirror.w, "%s %-5s %s\n", line.Time.Format("15:04:05"), line.Level, line.Message)
 	}
+	h.mirror.mu.Unlock()
 	return nil
+}
+
+// qualify prefixes a key with the groups opened so far.
+func (h *Handler) qualify(key string) string {
+	if len(h.groups) == 0 {
+		return key
+	}
+	return strings.Join(h.groups, ".") + "." + key
 }
 
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	c := *h
-	c.attrs = append(append([]slog.Attr(nil), h.attrs...), attrs...)
+	c.attrs = append([]slog.Attr(nil), h.attrs...)
+	for _, a := range attrs {
+		if !a.Equal(slog.Attr{}) {
+			c.attrs = append(c.attrs, slog.Attr{Key: h.qualify(a.Key), Value: a.Value})
+		}
+	}
 	return &c
 }
 
