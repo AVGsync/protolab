@@ -9,14 +9,15 @@ import (
 	"github.com/AVGsync/protolab/internal/spec"
 )
 
-// frame is a message cut out of a stream, before rule matching.
+// frame is a message cut out of a stream, before rule matching. Frames are
+// kept compact because a large stream holds millions of them.
 type frame struct {
 	offset, length int
-	issues         []string
+	seg            int32 // segment giving the timestamp (segmentIndex.at)
+	issues         int32 // index into stream.frameIssues, -1 when none
 	// partial is set when the frame is cut short by the end of the stream or
 	// contains gap bytes.
 	partial bool
-	ts      string // timestamp of the segment holding the first byte
 }
 
 // frameStream fills st.frames and st.unframed. Every known byte of the
@@ -163,16 +164,29 @@ func (st *stream) emit(offset, length int, issue string, truncated bool) {
 	if unknown == length {
 		return
 	}
-	f := frame{offset: offset, length: length, partial: truncated || unknown > 0}
-	if issue != "" {
-		f.issues = append(f.issues, issue)
+	f := frame{offset: offset, length: length, seg: st.segs.at(offset), issues: -1, partial: truncated || unknown > 0}
+	if issue != "" || unknown > 0 {
+		var issues []string
+		if issue != "" {
+			issues = append(issues, issue)
+		}
+		if unknown > 0 {
+			issues = append(issues, fmt.Sprintf("%d Б неизвестны (пропуск в записи)", unknown))
+		}
+		f.issues = int32(len(st.frameIssues))
+		st.frameIssues = append(st.frameIssues, issues)
 	}
-	if unknown > 0 {
-		f.issues = append(f.issues, fmt.Sprintf("%d Б неизвестны (пропуск в записи)", unknown))
-	}
-	f.ts = st.segs.timestampAt(offset)
 	st.frames = append(st.frames, f)
 }
+
+func (st *stream) issuesOf(f *frame) []string {
+	if f.issues < 0 {
+		return nil
+	}
+	return st.frameIssues[f.issues]
+}
+
+func (st *stream) timestampOf(f *frame) string { return st.segs.timestamp(f.seg) }
 
 // markUnframed records the known bytes of [offset, offset+length) as lying
 // outside any message, merging with the previous range when adjacent.

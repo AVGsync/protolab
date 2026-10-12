@@ -18,8 +18,9 @@ type stream struct {
 	gaps    []model.StreamGap
 	segs    segmentIndex
 
-	frames   []frame
-	unframed []model.ByteRange
+	frames      []frame
+	frameIssues [][]string // referenced by frame.issues
+	unframed    []model.ByteRange
 }
 
 func newStream(dir model.Direction, in StreamInput, own bool) *stream {
@@ -93,6 +94,7 @@ type segmentIndex struct {
 	segs   []model.StreamSegment
 	order  []int // segment indices sorted by offset
 	maxEnd []int // maxEnd[k] = max end of segs[order[0..k]]
+	hint   int   // result of the previous lowerBound; queries mostly move forward
 }
 
 func newSegmentIndex(segs []model.StreamSegment) segmentIndex {
@@ -113,10 +115,28 @@ func newSegmentIndex(segs []model.StreamSegment) segmentIndex {
 	return segmentIndex{segs: segs, order: order, maxEnd: maxEnd}
 }
 
+// lowerBound returns the first position in order whose segment may end after
+// from: every segment before it ends at or before from.
+func (x *segmentIndex) lowerBound(from int) int {
+	k := x.hint
+	if k > len(x.maxEnd) || (k > 0 && x.maxEnd[k-1] > from) {
+		k = 0 // moved backwards
+	}
+	for steps := 0; k < len(x.maxEnd) && x.maxEnd[k] <= from; steps++ {
+		if steps == 8 {
+			k += sort.Search(len(x.maxEnd)-k, func(i int) bool { return x.maxEnd[k+i] > from })
+			break
+		}
+		k++
+	}
+	x.hint = k
+	return k
+}
+
 // overlapping returns the positions in x.order of segments that may overlap
 // [from, to): the caller still filters segments that end before from.
 func (x *segmentIndex) overlapping(from, to int) (lo, hi int) {
-	lo = sort.Search(len(x.order), func(k int) bool { return x.maxEnd[k] > from })
+	lo = x.lowerBound(from)
 	hi = lo
 	for hi < len(x.order) && x.segs[x.order[hi]].Offset < to {
 		hi++
@@ -124,12 +144,13 @@ func (x *segmentIndex) overlapping(from, to int) (lo, hi int) {
 	return lo, hi
 }
 
-// timestampAt is the timestamp of the segment holding byte offset; when the
-// byte was never captured it falls back to the last segment, like the
-// reference implementation. Among overlapping copies the earliest listed wins.
-func (x *segmentIndex) timestampAt(offset int) string {
+// at returns the segment whose timestamp a message starting at offset gets:
+// the segment holding that byte, the earliest listed among overlapping
+// copies; when the byte was never captured, the last segment, like the
+// reference implementation. It is -1 only when there are no segments.
+func (x *segmentIndex) at(offset int) int32 {
 	if len(x.segs) == 0 {
-		return ""
+		return -1
 	}
 	best := -1
 	lo, hi := x.overlapping(offset, offset+1)
@@ -141,7 +162,14 @@ func (x *segmentIndex) timestampAt(offset int) string {
 	if best < 0 {
 		best = len(x.segs) - 1
 	}
-	return x.segs[best].Timestamp
+	return int32(best)
+}
+
+func (x *segmentIndex) timestamp(seg int32) string {
+	if seg < 0 {
+		return ""
+	}
+	return x.segs[seg].Timestamp
 }
 
 // packets returns the sorted numbers of the packets overlapping [offset, offset+length).
