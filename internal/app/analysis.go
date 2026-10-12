@@ -242,11 +242,14 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 			break
 		}
 		res.packetCount = pkt.Number
-		if res.first.IsZero() || pkt.Timestamp.Before(res.first) {
-			res.first = pkt.Timestamp
-		}
-		if pkt.Timestamp.After(res.last) {
-			res.last = pkt.Timestamp
+		// pcapng Simple Packet Blocks carry no timestamp (zero time).
+		if !pkt.Timestamp.IsZero() {
+			if res.first.IsZero() || pkt.Timestamp.Before(res.first) {
+				res.first = pkt.Timestamp
+			}
+			if pkt.Timestamp.After(res.last) {
+				res.last = pkt.Timestamp
+			}
 		}
 
 		seg, err := netpkt.Decode(pkt.LinkType, pkt.Data, pkt.OrigLen)

@@ -31,7 +31,7 @@ func newProject(a *App, st *store.State) *project {
 		id:    st.Project.ID,
 		st:    st,
 		slots: map[string]*analysisSlot{},
-		cache: newMessageCache(256),
+		cache: newMessageCache(a.cfg.Limits.MaxMessages),
 	}
 }
 

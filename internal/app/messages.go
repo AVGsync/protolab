@@ -2,6 +2,7 @@ package app
 
 import (
 	"container/list"
+	"fmt"
 	"slices"
 	"strconv"
 	"sync"
@@ -13,14 +14,17 @@ import (
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
-// messageCache is a small LRU of parsed sessions keyed by session, spec hash,
+// messageCache is an LRU of parsed sessions keyed by session, spec hash,
 // the analysis that produced the session and the project revision (actions
-// and settings change the result).
+// and settings change the result). Its budget is a number of messages, not
+// of entries: one session of a long capture can hold more messages than
+// hundreds of short ones.
 type messageCache struct {
-	mu    sync.Mutex
-	cap   int
-	order *list.List
-	items map[string]*list.Element
+	mu     sync.Mutex
+	budget int // messages
+	used   int
+	order  *list.List
+	items  map[string]*list.Element
 }
 
 type cacheEntry struct {
@@ -28,8 +32,10 @@ type cacheEntry struct {
 	parsed engine.ParsedSession
 }
 
-func newMessageCache(capacity int) *messageCache {
-	return &messageCache{cap: capacity, order: list.New(), items: map[string]*list.Element{}}
+func (e *cacheEntry) weight() int { return len(e.parsed.Messages) + 1 }
+
+func newMessageCache(budget int) *messageCache {
+	return &messageCache{budget: budget, order: list.New(), items: map[string]*list.Element{}}
 }
 
 func (c *messageCache) get(key string) (engine.ParsedSession, bool) {
@@ -45,16 +51,22 @@ func (c *messageCache) get(key string) (engine.ParsedSession, bool) {
 func (c *messageCache) put(key string, parsed engine.ParsedSession) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if el, ok := c.items[key]; ok {
-		el.Value.(*cacheEntry).parsed = parsed
-		c.order.MoveToFront(el)
-		return
+	entry := &cacheEntry{key: key, parsed: parsed}
+	if entry.weight() > c.budget {
+		return // larger than the whole cache: parse again on demand
 	}
-	c.items[key] = c.order.PushFront(&cacheEntry{key: key, parsed: parsed})
-	for c.order.Len() > c.cap {
+	if el, ok := c.items[key]; ok {
+		c.used -= el.Value.(*cacheEntry).weight()
+		c.order.Remove(el)
+	}
+	c.items[key] = c.order.PushFront(entry)
+	c.used += entry.weight()
+	for c.used > c.budget {
 		last := c.order.Back()
+		old := last.Value.(*cacheEntry)
 		c.order.Remove(last)
-		delete(c.items, last.Value.(*cacheEntry).key)
+		delete(c.items, old.key)
+		c.used -= old.weight()
 	}
 }
 
@@ -63,6 +75,7 @@ func (c *messageCache) clear() {
 	defer c.mu.Unlock()
 	c.order.Init()
 	c.items = map[string]*list.Element{}
+	c.used = 0
 }
 
 // engineInput builds the engine input of a session.
@@ -126,7 +139,12 @@ func (a *App) SessionMessages(sessionID, versionID string) ([]model.Message, err
 	if err != nil {
 		return nil, err
 	}
-	return nonNil(p.parse(sd, &v.Spec, v.Hash).Messages), nil
+	msgs := p.parse(sd, &v.Spec, v.Hash).Messages
+	if limit := a.cfg.Limits.MaxMessages; len(msgs) > limit {
+		return nil, &Error{Status: 422, Code: "message_limit", Message: fmt.Sprintf(
+			"В сессии %d сообщений — больше предела %d. Проверьте кадрирование интерпретации: такие числа обычно означают неверную длину кадра", len(msgs), limit)}
+	}
+	return nonNil(msgs), nil
 }
 
 type MessagesQuery struct {
