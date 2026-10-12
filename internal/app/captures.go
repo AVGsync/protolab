@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -236,6 +237,15 @@ func (a *App) indexCapture(ctx context.Context, p *project, captureID string, pr
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	for err == nil && ctx.Err() == nil && !sameSettings(in.settings, p.st.Project.Settings) {
+		// The settings changed while the file was read: the sessions must be
+		// built with the new ones. The re-analysis that follows a settings
+		// change skips captures that are still indexing, so it is done here.
+		in.settings = p.st.Project.Settings
+		p.mu.Unlock()
+		res, err = analyzeFile(ctx, in, progress)
+		p.mu.Lock()
+	}
 	i = findIndex(p.st.Captures, func(c *storeCapture) bool { return c.ID == captureID })
 	if i < 0 {
 		return nil, errors.New("запись удалена")
@@ -272,6 +282,11 @@ func (a *App) indexCapture(ctx context.Context, p *project, captureID string, pr
 		return nil, err
 	}
 	return &model.JobResult{Type: "capture", ID: captureID}, nil
+}
+
+// sameSettings reports whether an analysis made with a still holds for b.
+func sameSettings(a, b model.ProjectSettings) bool {
+	return a.OverlapPolicy == b.OverlapPolicy && a.ChecksumPolicy == b.ChecksumPolicy && slices.Equal(a.TargetPorts, b.TargetPorts)
 }
 
 // applyAnalysis copies capture-level results into the stored record.

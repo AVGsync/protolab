@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/AVGsync/protolab/internal/model"
 )
@@ -106,9 +107,19 @@ func (s *Store) List() (states []*State, errs map[string]error) {
 	return states, errs
 }
 
-// Load reads project.json of a project directory.
+// Load reads project.json of a project directory. The project id must be the
+// directory name: every save goes to ProjectDir(id), so a copy of a project
+// folder under another name (a backup next to it) would otherwise shadow the
+// original and overwrite its project.json with the copy's state.
 func (s *Store) Load(id string) (*State, error) {
-	return LoadDir(s.ProjectDir(id))
+	st, err := LoadDir(s.ProjectDir(id))
+	if err != nil {
+		return nil, err
+	}
+	if st.Project.ID != id {
+		return nil, fmt.Errorf("%s: project id %q does not match its directory %q", stateFile, st.Project.ID, id)
+	}
+	return st, nil
 }
 
 // LoadDir reads project.json from any directory (used for imports).
@@ -167,14 +178,19 @@ func isFileName(name string) bool {
 	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, `/\:`) && !strings.HasPrefix(name, ".")
 }
 
+// Encode renders project.json.
+func Encode(st *State) ([]byte, error) {
+	st.SchemaVersion = SchemaVersion
+	return json.MarshalIndent(st, "", "  ")
+}
+
 // Save writes project.json atomically: a crash leaves either the old or the new file.
 func (s *Store) Save(st *State) error {
-	st.SchemaVersion = SchemaVersion
 	dir := s.ProjectDir(st.Project.ID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(st, "", "  ")
+	b, err := Encode(st)
 	if err != nil {
 		return err
 	}
@@ -203,6 +219,61 @@ func WriteFileAtomic(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(name, path)
+}
+
+// Temporary names: WriteFileAtomic (".tmp-*"), a capture upload
+// ("captures/.upload-*"), a project archive upload (".upload-*.zip") and its
+// unpacking (".import-*") in the projects directory.
+var tempPrefixes = []string{".tmp-", ".upload-", ".import-"}
+
+func isTemp(name string) bool {
+	for _, p := range tempPrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// RemoveStaleTemp deletes temporary files and directories older than age that
+// a killed process left behind: they are hidden from List and the export and
+// would hold their disk space forever (an unpacked archive can take gigabytes).
+// The age keeps the work of another process that is running right now.
+func (s *Store) RemoveStaleTemp(age time.Duration) (removed []string) {
+	cutoff := time.Now().Add(-age)
+	sweep := func(dir string) {
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if !isTemp(e.Name()) {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil || info.ModTime().After(cutoff) {
+				continue
+			}
+			p := filepath.Join(dir, e.Name())
+			if os.RemoveAll(p) == nil {
+				removed = append(removed, p)
+			}
+		}
+	}
+	sweep(s.ProjectsDir())
+	projects, _ := os.ReadDir(s.ProjectsDir())
+	for _, pe := range projects {
+		if !pe.IsDir() || strings.HasPrefix(pe.Name(), ".") {
+			continue
+		}
+		dir := s.ProjectDir(pe.Name())
+		sweep(dir)
+		sweep(filepath.Join(dir, "captures"))
+		reports, _ := os.ReadDir(filepath.Join(dir, "reports"))
+		for _, re := range reports {
+			if re.IsDir() {
+				sweep(filepath.Join(dir, "reports", re.Name()))
+			}
+		}
+	}
+	return removed
 }
 
 // DirSize returns the total size of regular files under dir.

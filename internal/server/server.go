@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -119,7 +120,10 @@ func (s *server) guard(next http.Handler) http.Handler {
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions {
-			if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+			// The UI (and the Vite proxy in dev) sends "same-origin". "same-site" is a
+			// page on another port of this host: another local web app must not
+			// change projects either, although its loopback Origin passes below.
+			if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" || site == "same-site" {
 				writeError(w, http.StatusForbidden, "cross_site", "Межсайтовые запросы запрещены", nil)
 				return
 			}
@@ -202,8 +206,13 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	}
 }
 
-// decode reads a JSON body into v.
+// decode reads a JSON body into v. The body must be declared as JSON: an HTML
+// form can only send form encodings and text/plain, so a cross-site form post
+// is refused even by a browser that sends neither Origin nor Sec-Fetch-Site.
 func decode(w http.ResponseWriter, r *http.Request, v any) error {
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || (mt != "application/json" && !strings.HasSuffix(mt, "+json")) {
+		return &app.Error{Status: http.StatusUnsupportedMediaType, Code: "unsupported_media_type", Message: "Тело запроса должно быть JSON (Content-Type: application/json)"}
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBody)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(v); err != nil {

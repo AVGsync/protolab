@@ -74,7 +74,13 @@ type App struct {
 	mu       sync.RWMutex
 	projects map[string]*project
 	owner    map[string]string // entity id -> project id
+
+	importMu sync.Mutex // serialises installImport
 }
+
+// staleTempAge: temporary files of an upload or an import older than this
+// were left by a process that was killed (a running import keeps writing).
+const staleTempAge = time.Hour
 
 // New opens the data directory and loads every project in it.
 func New(cfg Config) (*App, error) {
@@ -87,6 +93,9 @@ func New(cfg Config) (*App, error) {
 	st, err := store.Open(cfg.DataDir)
 	if err != nil {
 		return nil, err
+	}
+	for _, p := range st.RemoveStaleTemp(staleTempAge) {
+		cfg.Logger.Info("stale temporary file removed", "path", p)
 	}
 	ctx, stop := context.WithCancel(context.Background())
 	a := &App{

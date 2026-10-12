@@ -86,7 +86,7 @@ func (c *compiled) verifySession(ctx context.Context, in *SessionInput) (t *tall
 	}
 
 	t = newTally(len(c.rules))
-	sess := c.newSession(in, false)
+	sess := c.newSession(in, false, 0)
 	t.captureDefects(sess)
 	for _, u := range sess.unframed {
 		t.unknownBytes += u.Length

@@ -195,7 +195,7 @@ func (p *project) snapshot(src model.SourceRef) (string, error) {
 		return "", badRequest("Направление: c2s или s2c")
 	}
 	data := sd.flow.Stream(src.Direction).Data
-	if src.Offset < 0 || src.Length <= 0 || src.Offset+src.Length > len(data) {
+	if src.Offset < 0 || src.Length <= 0 || src.Offset > len(data)-src.Length { // not Offset+Length: it may overflow
 		return "", invalid("Диапазон %d+%d вне потока (%d Б)", src.Offset, src.Length, len(data))
 	}
 	gaps := sd.stream(src.Direction).Gaps

@@ -30,6 +30,11 @@ type SessionInput struct {
 	Session model.TcpSession
 	Streams [2]StreamInput      // [0] c2s, [1] s2c
 	Actions []model.ActionEntry // actions linked to the session (experiment conditions)
+	// MaxMessages, when positive, bounds ParseSession: framing stops counting
+	// past it and a session with more messages is not built (TooMany), so a
+	// framing that cuts a long stream into tiny messages cannot exhaust memory.
+	// Verify ignores it.
+	MaxMessages int
 }
 
 // Unframed is a range of a stream that does not belong to any message
@@ -44,6 +49,9 @@ type Unframed struct {
 type ParsedSession struct {
 	Messages []model.Message // both directions, ordered by time; Index assigned
 	Unframed []Unframed
+	// TooMany: the session has more than SessionInput.MaxMessages messages;
+	// Messages and Unframed are empty then.
+	TooMany bool
 }
 
 // ParseSession frames and parses both directions of a session. Messages own

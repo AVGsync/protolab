@@ -77,6 +77,17 @@ func listen(f serveFlags) (net.Listener, error) {
 	return net.Listen("tcp", "127.0.0.1:0")
 }
 
+// serverURL is the address to open in the browser: the bound IP itself
+// ([::1] or 127.0.0.2 are not reachable as 127.0.0.1), or 127.0.0.1 when the
+// server listens on all interfaces.
+func serverURL(addr *net.TCPAddr) string {
+	host := "127.0.0.1"
+	if !addr.IP.IsUnspecified() {
+		host = addr.IP.String()
+	}
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(addr.Port))
+}
+
 func runServe(args []string) int {
 	f, err := parseServeFlags(args)
 	if err != nil {
@@ -116,11 +127,7 @@ func runServe(args []string) int {
 	}
 	tcp := ln.Addr().(*net.TCPAddr)
 	loopback := tcp.IP.IsLoopback()
-	host := "127.0.0.1"
-	if !loopback && !tcp.IP.IsUnspecified() {
-		host = tcp.IP.String()
-	}
-	url := "http://" + net.JoinHostPort(host, strconv.Itoa(tcp.Port))
+	url := serverURL(tcp)
 	if !loopback {
 		logger.Warn("сервер доступен из сети: проверка Host/Origin отключена", "addr", ln.Addr().String())
 	}

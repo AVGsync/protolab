@@ -270,3 +270,28 @@ func TestStatusPrecedence(t *testing.T) {
 		t.Errorf("issues = %q", got[0].Issues)
 	}
 }
+
+// MaxMessages bounds what ParseSession builds: a session with more messages
+// is reported as TooMany instead of being built (and framing stops recording
+// frames), so a framing that cuts a long stream into bytes cannot exhaust memory.
+func TestParseSessionMaxMessages(t *testing.T) {
+	s := mustSpec(t, `{"format":"protolab/v1","framing":{"kind":"fixed","size":1},"messages":[]}`)
+	in := newInput("s", oneSegment(make([]byte, 10), 1, 1), oneSegment(make([]byte, 5), 2, 2))
+	for _, tc := range []struct {
+		max, messages int
+		tooMany       bool
+	}{{0, 15, false}, {15, 15, false}, {14, 0, true}, {1, 0, true}} {
+		in.MaxMessages = tc.max
+		got := ParseSession(s, in)
+		if len(got.Messages) != tc.messages || got.TooMany != tc.tooMany || got.Messages == nil || got.Unframed == nil {
+			t.Errorf("max %d: %d messages, tooMany %v", tc.max, len(got.Messages), got.TooMany)
+		}
+	}
+	// Framing keeps at most max+1 frames per direction.
+	c := compile(s)
+	in.MaxMessages = 3
+	sess := c.newSession(&in, true, in.MaxMessages+1)
+	if n := len(sess.streams[0].frames); n != 4 {
+		t.Errorf("frames recorded past the cap: %d", n)
+	}
+}

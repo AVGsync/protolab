@@ -171,6 +171,9 @@ func (st *stream) frameFixed(size int) {
 // emit records a frame. A frame made only of gap bytes carries nothing that
 // could be interpreted and is dropped; one that contains some is partial.
 func (st *stream) emit(offset, length int, issue string, truncated bool) {
+	if st.maxFrames > 0 && len(st.frames) >= st.maxFrames {
+		return
+	}
 	unknown := st.countUnknown(offset, offset+length)
 	if unknown == length {
 		return

@@ -12,7 +12,14 @@ import (
 
 func parseSession(s *spec.Spec, in SessionInput) ParsedSession {
 	c := compile(s)
-	sess := c.newSession(&in, true)
+	maxFrames := 0
+	if in.MaxMessages > 0 {
+		maxFrames = in.MaxMessages + 1 // one more tells "too many"
+	}
+	sess := c.newSession(&in, true, maxFrames)
+	if in.MaxMessages > 0 && len(sess.order) > in.MaxMessages {
+		return ParsedSession{Messages: []model.Message{}, Unframed: []Unframed{}, TooMany: true}
+	}
 	b := c.newBuilder(&in, false)
 	out := ParsedSession{Messages: make([]model.Message, len(sess.order)), Unframed: sess.unframed}
 	for i, ref := range sess.order {
@@ -40,10 +47,12 @@ type frameRef struct {
 
 // newSession frames both directions. With own set the stream bytes are
 // copied, because the messages built from them escape to the caller.
-func (c *compiled) newSession(in *SessionInput, own bool) *session {
+// maxFrames, when positive, caps the frames recorded per direction.
+func (c *compiled) newSession(in *SessionInput, own bool, maxFrames int) *session {
 	s := &session{in: in, unframed: []Unframed{}}
 	for d, dir := range model.Directions {
 		st := newStream(dir, in.Streams[d], own)
+		st.maxFrames = maxFrames
 		st.frameStream(&c.framing)
 		for _, u := range st.unframed {
 			s.unframed = append(s.unframed, Unframed{Direction: dir, Offset: u.Offset, Length: u.Length})

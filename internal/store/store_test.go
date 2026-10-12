@@ -79,8 +79,12 @@ func TestExportExtractRoundTrip(t *testing.T) {
 	os.MkdirAll(filepath.Join(s.ProjectDir("prj-2"), "captures"), 0o755)
 	os.WriteFile(filepath.Join(s.ProjectDir("prj-2"), "captures", "abc.pcapng"), []byte("pcap-bytes"), 0o644)
 
+	state, err := Encode(st)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var buf bytes.Buffer
-	if err := s.ExportZip("prj-2", &buf); err != nil {
+	if err := s.ExportZip("prj-2", state, &buf); err != nil {
 		t.Fatal(err)
 	}
 	dir, err := s.ExtractZip(bytes.NewReader(buf.Bytes()), int64(buf.Len()), lim)
@@ -147,5 +151,43 @@ func TestLoadRejectsPathsOutsideTheProject(t *testing.T) {
 		if err := load(body); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
+	}
+}
+
+func zipOfEntries(t *testing.T, entries ...[2]string) *bytes.Reader {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for _, e := range entries {
+		w, err := zw.Create(e[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.Write([]byte(e[1]))
+	}
+	zw.Close()
+	return bytes.NewReader(buf.Bytes())
+}
+
+// Name clashes are a bad archive (422), not an internal error from the file
+// system with a server path in it; sizes are checked before anything is written.
+func TestExtractRejectsClashesAndOversizedEntries(t *testing.T) {
+	s, _ := Open(t.TempDir())
+	cases := map[string]*bytes.Reader{
+		"duplicate entry":        zipOfEntries(t, [2]string{"project.json", "{}"}, [2]string{"project.json", "{}"}),
+		"duplicate after clean":  zipOfEntries(t, [2]string{"project.json", "{}"}, [2]string{"captures/a", "x"}, [2]string{"captures/./a", "y"}),
+		"case-only duplicate":    zipOfEntries(t, [2]string{"project.json", "{}"}, [2]string{"captures/A", "x"}, [2]string{"captures/a", "y"}),
+		"file, then inside it":   zipOfEntries(t, [2]string{"project.json", "{}"}, [2]string{"reports/r", "x"}, [2]string{"reports/r/f", "y"}),
+		"directory, then a file": zipOfEntries(t, [2]string{"project.json", "{}"}, [2]string{"reports/r/f", "x"}, [2]string{"reports/r", "y"}),
+		"project.json too large": zipOfEntries(t, [2]string{"project.json", "{}" + strings.Repeat(" ", 2048)}),
+	}
+	small := ImportLimits{MaxFiles: 100, MaxTotalBytes: 1 << 20, MaxStateBytes: 1024}
+	for name, r := range cases {
+		if _, err := s.ExtractZip(r, r.Size(), small); !errors.Is(err, ErrBadArchive) {
+			t.Errorf("%s: expected ErrBadArchive, got %v", name, err)
+		}
+	}
+	if entries, _ := os.ReadDir(s.ProjectsDir()); len(entries) != 0 {
+		t.Errorf("failed imports left directories: %v", entries)
 	}
 }

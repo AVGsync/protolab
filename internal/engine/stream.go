@@ -23,6 +23,7 @@ type stream struct {
 	frames      []frame
 	frameIssues [][]string // referenced by frame.issues
 	unframed    []model.ByteRange
+	maxFrames   int // when positive, frames past it are not recorded (SessionInput.MaxMessages)
 }
 
 func newStream(dir model.Direction, in StreamInput, own bool) *stream {

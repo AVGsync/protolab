@@ -198,10 +198,16 @@ func (a *App) ExportProject(id string, w io.Writer) error {
 	if err != nil {
 		return err
 	}
-	// Hold the lock so project.json is not replaced while it is being read.
+	// project.json is taken from memory under the lock; the files are written
+	// without it, so a slow or stalled download does not block the project
+	// (and the project list, which reads every project).
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	return a.store.ExportZip(p.id, w)
+	state, err := store.Encode(p.st)
+	p.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	return a.store.ExportZip(p.id, state, w)
 }
 
 // ExportFileName is the suggested name of the export archive.
@@ -227,7 +233,12 @@ func (a *App) ImportProject(fileName string, r io.Reader) (model.Project, string
 		return model.Project{}, "", &Error{Status: http.StatusRequestEntityTooLarge, Code: "archive_too_large", Message: "Архив больше допустимого размера"}
 	}
 
-	dir, err := a.store.ExtractZip(tmp, n, store.ImportLimits{MaxFiles: 10_000, MaxTotalBytes: maxArchive * 2})
+	// A real archive stores captures as they are and deflates the rest, so it
+	// unpacks to about its own size. The budget leaves a 100x margin (and never
+	// less than one capture) and stays within twice the archive limit: a small
+	// zip bomb must not fill the disk.
+	budget := min(maxArchive*2, max(n*100, a.cfg.Limits.MaxCaptureBytes))
+	dir, err := a.store.ExtractZip(tmp, n, store.ImportLimits{MaxFiles: 10_000, MaxTotalBytes: budget})
 	if err != nil {
 		if errors.Is(err, store.ErrBadArchive) {
 			return model.Project{}, "", &Error{Status: http.StatusUnprocessableEntity, Code: "invalid_archive", Message: err.Error()}
@@ -237,33 +248,16 @@ func (a *App) ImportProject(fileName string, r io.Reader) (model.Project, string
 	defer os.RemoveAll(dir) // no-op once moved
 
 	st, err := store.LoadDir(dir)
+	if err == nil {
+		err = checkImportIDs(st)
+	}
 	if err != nil {
 		return model.Project{}, "", &Error{Status: http.StatusUnprocessableEntity, Code: "invalid_archive", Message: err.Error()}
 	}
-	if a.collides(st) {
-		if st, err = remapIDs(st, dir); err != nil {
-			return model.Project{}, "", err
-		}
-	}
-	normalizeState(st)
-	for i := range st.Captures {
-		st.Captures[i].ProjectID = st.Project.ID
-	}
-	st.Project.Description = strings.TrimSpace(st.Project.Description)
-
-	dst := a.store.ProjectDir(st.Project.ID)
-	data, err := json.MarshalIndent(st, "", "  ")
+	p, err := a.installImport(st, dir)
 	if err != nil {
 		return model.Project{}, "", err
 	}
-	if err := store.WriteFileAtomic(filepath.Join(dir, "project.json"), data); err != nil {
-		return model.Project{}, "", err
-	}
-	if err := os.Rename(dir, dst); err != nil {
-		return model.Project{}, "", err
-	}
-	p := newProject(a, st)
-	a.register(p)
 	a.log.Info("project imported", "project", p.id, "file", fileName)
 	a.failInterrupted(p) // the archive was made in the middle of a run or a report
 	a.resumeIndexing(p)  // ... or of a capture import
@@ -285,6 +279,56 @@ func (a *App) ImportProject(fileName string, r io.Reader) (model.Project, string
 		return &model.JobResult{Type: "project", ID: p.id}, nil
 	})
 	return p.dto(), job.ID, nil
+}
+
+// installImport moves an unpacked archive into the projects directory and
+// registers it. Imports are serialised from the id check to the registration:
+// two imports of the same archive (a double click, two tabs) must not both
+// find its ids free.
+func (a *App) installImport(st *store.State, dir string) (*project, error) {
+	a.importMu.Lock()
+	defer a.importMu.Unlock()
+	if _, err := os.Lstat(a.store.ProjectDir(st.Project.ID)); err == nil || a.collides(st) {
+		// The directory may exist without a loaded project (it failed to load).
+		var err error
+		if st, err = remapIDs(st, dir); err != nil {
+			return nil, err
+		}
+	}
+	normalizeState(st)
+	for i := range st.Captures {
+		st.Captures[i].ProjectID = st.Project.ID
+	}
+	st.Project.Description = strings.TrimSpace(st.Project.Description)
+
+	data, err := store.Encode(st)
+	if err != nil {
+		return nil, err
+	}
+	if err := store.WriteFileAtomic(filepath.Join(dir, "project.json"), data); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(dir, a.store.ProjectDir(st.Project.ID)); err != nil {
+		return nil, err
+	}
+	p := newProject(a, st)
+	a.register(p)
+	return p, nil
+}
+
+// importID is the form of every id ProtoLab generates ("cap-1a2b…"). Ids of
+// an imported archive become directory names and URL path segments, and
+// remapIDs replaces them as quoted JSON tokens, so anything else is refused.
+var importID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+func checkImportIDs(st *store.State) error {
+	ids := append([]string{st.Project.ID}, (&project{st: st}).entityIDs()...)
+	for _, id := range ids {
+		if !importID.MatchString(id) {
+			return fmt.Errorf("project.json: invalid id %q", id)
+		}
+	}
+	return nil
 }
 
 func (a *App) collides(st *store.State) bool {
@@ -311,8 +355,8 @@ func remapIDs(st *store.State, dir string) (*store.State, error) {
 	mapping := map[string]string{st.Project.ID: newID("prj")}
 	for _, id := range tmp.entityIDs() {
 		prefix, _, ok := strings.Cut(id, "-")
-		if !ok {
-			prefix = "obj"
+		if !ok || len(prefix) > 16 {
+			prefix = "obj" // a new id must pass checkImportIDs when exported again
 		}
 		mapping[id] = newID(prefix)
 	}

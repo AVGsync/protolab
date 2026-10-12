@@ -246,5 +246,9 @@ func (a *App) PreviewSpec(raw json.RawMessage, sessionID string) ([]model.Messag
 	if err != nil {
 		return nil, err
 	}
-	return nonNil(p.parse(sd, s, spec.Hash(s)).Messages), nil
+	parsed := p.parse(sd, s, spec.Hash(s))
+	if parsed.TooMany {
+		return nil, sessionMessageLimit(a.cfg.Limits.MaxMessages)
+	}
+	return nonNil(parsed.Messages), nil
 }

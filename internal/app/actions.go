@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"slices"
 	"strconv"
 	"strings"
@@ -197,6 +198,9 @@ func (a *App) CreateAction(projectID string, in model.CreateActionInput) (model.
 	return act, nil
 }
 
+// maxActionLogBytes bounds an imported action log.
+const maxActionLogBytes = 16 << 20
+
 // ImportActions reads a CSV (timestamp,kind,label,params,result[,observed]) or
 // JSON (array of CreateActionInput) action log and links it to sessions by time.
 func (a *App) ImportActions(projectID, fileName string, r io.Reader) (model.ImportActionsResult, error) {
@@ -204,9 +208,14 @@ func (a *App) ImportActions(projectID, fileName string, r io.Reader) (model.Impo
 	if err != nil {
 		return model.ImportActionsResult{}, err
 	}
-	raw, err := io.ReadAll(io.LimitReader(r, 16<<20))
+	raw, err := io.ReadAll(io.LimitReader(r, maxActionLogBytes+1))
 	if err != nil {
 		return model.ImportActionsResult{}, badRequest("Не удалось прочитать файл: %v", err)
+	}
+	if len(raw) > maxActionLogBytes {
+		// Cut at the limit, the last record would be imported truncated.
+		return model.ImportActionsResult{}, &Error{Status: http.StatusRequestEntityTooLarge, Code: "action_log_too_large",
+			Message: fmt.Sprintf("Журнал действий больше %d МиБ", maxActionLogBytes>>20)}
 	}
 	var inputs []model.CreateActionInput
 	trimmed := bytes.TrimSpace(raw)

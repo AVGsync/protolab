@@ -169,3 +169,42 @@ func TestStaticSPA(t *testing.T) {
 		t.Fatalf("security headers missing: %v", rec.Header())
 	}
 }
+
+// A page on another port of this host is "same-site", not "cross-site", and
+// its loopback Origin passes the origin check: it must still not change data.
+// The UI and the Vite dev proxy send "same-origin".
+func TestGuardRejectsSameSitePages(t *testing.T) {
+	h := newTestServer(t)
+	rec := do(h, "POST", "/api/v1/projects", `{"name":"x"}`, map[string]string{"Sec-Fetch-Site": "same-site", "Origin": "http://127.0.0.1:8080"})
+	if rec.Code != 403 || errorCode(t, rec) != "cross_site" {
+		t.Fatalf("same-site POST from another local port: %d %s", rec.Code, rec.Body)
+	}
+	rec = do(h, "POST", "/api/v1/projects", `{"name":"dev"}`, map[string]string{"Sec-Fetch-Site": "same-origin", "Origin": "http://localhost:5173"})
+	if rec.Code != 201 {
+		t.Fatalf("Vite proxy request rejected: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// JSON endpoints accept only a JSON body: an HTML form (text/plain or form
+// encodings) cannot produce one.
+func TestJSONBodyRequiresJSONContentType(t *testing.T) {
+	h := newTestServer(t)
+	for _, ct := range []string{"text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x", ""} {
+		req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(`{"name":"form"}`))
+		req.Host = "127.0.0.1:7420"
+		if ct != "" {
+			req.Header.Set("Content-Type", ct)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 415 || errorCode(t, rec) != "unsupported_media_type" {
+			t.Fatalf("Content-Type %q: %d %s", ct, rec.Code, rec.Body)
+		}
+	}
+	if rec := do(h, "POST", "/api/v1/projects", `{"name":"ok"}`, map[string]string{"Content-Type": "application/json; charset=utf-8"}); rec.Code != 201 {
+		t.Fatalf("JSON with charset: %d %s", rec.Code, rec.Body)
+	}
+	if rec := do(h, "GET", "/api/v1/projects", "", nil); rec.Code != 200 {
+		t.Fatalf("GET without a body: %d", rec.Code)
+	}
+}

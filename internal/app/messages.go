@@ -140,9 +140,19 @@ func (p *project) parse(sd *sessionData, sp *spec.Spec, hash string) engine.Pars
 	for i, a := range actions {
 		ids[i] = a.ID
 	}
-	parsed := engine.ParseSession(sp, engineInput(sd, actions, ids))
+	in := engineInput(sd, actions, ids)
+	// A framing that cuts a long stream into tiny messages would otherwise
+	// build millions of them before any limit is checked.
+	in.MaxMessages = p.app.cfg.Limits.MaxMessages
+	parsed := engine.ParseSession(sp, in)
 	p.cache.put(key, parsed)
 	return parsed
+}
+
+// sessionMessageLimit is the error for a session with more messages than the limit.
+func sessionMessageLimit(limit int) error {
+	return &Error{Status: 422, Code: "message_limit", Message: fmt.Sprintf(
+		"В сессии больше %d сообщений (предел). Проверьте кадрирование интерпретации: такие числа обычно означают неверную длину кадра", limit)}
 }
 
 // version returns an interpretation version of the project.
@@ -173,12 +183,11 @@ func (a *App) SessionMessages(sessionID, versionID string) ([]model.Message, err
 	if err != nil {
 		return nil, err
 	}
-	msgs := p.parse(sd, &v.Spec, v.Hash).Messages
-	if limit := a.cfg.Limits.MaxMessages; len(msgs) > limit {
-		return nil, &Error{Status: 422, Code: "message_limit", Message: fmt.Sprintf(
-			"В сессии %d сообщений — больше предела %d. Проверьте кадрирование интерпретации: такие числа обычно означают неверную длину кадра", len(msgs), limit)}
+	parsed := p.parse(sd, &v.Spec, v.Hash)
+	if parsed.TooMany {
+		return nil, sessionMessageLimit(a.cfg.Limits.MaxMessages)
 	}
-	return nonNil(msgs), nil
+	return nonNil(parsed.Messages), nil
 }
 
 type MessagesQuery struct {
@@ -220,7 +229,11 @@ func (a *App) ProjectMessages(projectID string, q MessagesQuery) ([]model.Messag
 		if len(q.SessionIDs) > 0 && !slices.Contains(q.SessionIDs, sd.dto.ID) {
 			continue
 		}
-		for _, m := range p.parse(sd, &v.Spec, v.Hash).Messages {
+		parsed := p.parse(sd, &v.Spec, v.Hash)
+		if parsed.TooMany {
+			return nil, &Error{Status: 422, Code: "message_limit", Message: "Слишком много сообщений для сравнения: сузьте выборку (тип сообщения, направление или сессии)"}
+		}
+		for _, m := range parsed.Messages {
 			if q.RuleID != "" && (m.RuleID == nil || *m.RuleID != q.RuleID) {
 				continue
 			}
