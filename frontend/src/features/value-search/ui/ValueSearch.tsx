@@ -12,7 +12,7 @@ import {
   type IntEncoding,
   type ValueHit,
 } from '@/shared/lib';
-import { Button, Input } from '@/shared/ui';
+import { Button, Input, Segmented, Select } from '@/shared/ui';
 
 export interface ValueSearchProps {
   bytes: Uint8Array;
@@ -25,7 +25,7 @@ export interface ValueSearchProps {
 const DEFAULT_ENCODINGS: IntEncoding[] = ['u8', 'u16le', 'u16be', 'i16le', 'i16be', 'u32le'];
 
 /**
- * "After «set 21» the value 21 appears in the exchange" — search a known value
+ * "After «set 21» the value 21 appears in the exchange": search a known value
  * in every common encoding (or a raw hex pattern) to start a hypothesis.
  */
 export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearchProps) {
@@ -61,55 +61,51 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
     setEncodings((list) => (list.includes(enc) ? list.filter((e) => e !== enc) : [...list, enc]));
 
   return (
-    <div className="flex flex-col gap-3">
-      <form onSubmit={search} className="flex flex-col gap-2.5">
-        <div className="flex gap-1 rounded-ctl border border-line-strong bg-bg p-0.5 text-xs">
-          {(['number', 'hex'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMode(m)}
-              className={cn('flex-1 px-2 py-1', mode === m ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg')}
-            >
-              {m === 'number' ? 'Число' : 'Байты (hex)'}
-            </button>
-          ))}
-        </div>
+    <div className="flex min-h-0 flex-col">
+      <form onSubmit={search} className="flex flex-col gap-2.5 px-4 py-3">
+        <Segmented
+          aria-label="Что искать"
+          value={mode}
+          onChange={setMode}
+          items={[
+            { id: 'number', label: 'Число' },
+            { id: 'hex', label: 'Байты (hex)' },
+          ]}
+          className="self-start"
+        />
         <div className="flex gap-2">
           <Input
+            autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={mode === 'number' ? '21 или 22.4' : 'A5 02'}
+            aria-label="Искомое значение"
             className="min-w-0 flex-1 font-mono"
           />
           {mode === 'number' && (
-            <select
-              value={scale}
-              onChange={(e) => setScale(Number(e.target.value))}
-              className="h-7 rounded-ctl border border-line-strong bg-bg px-1.5 text-xs"
-              title="Масштаб: значение × k"
-            >
+            <Select value={scale} onChange={(e) => setScale(Number(e.target.value))} title="Масштаб: значение × k" className="w-16">
               {[1, 10, 100].map((k) => (
                 <option key={k} value={k}>
                   ×{k}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <Button type="submit" variant="primary">
             Найти
           </Button>
         </div>
         {mode === 'number' && (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Кодировки">
             {INT_ENCODINGS.map((enc) => (
               <button
                 key={enc}
                 type="button"
+                aria-pressed={encodings.includes(enc)}
                 onClick={() => toggle(enc)}
                 className={cn(
-                  'border px-1.5 py-0.5 font-mono text-[10.5px]',
-                  encodings.includes(enc) ? 'border-fg bg-surface-2 text-fg' : 'border-line text-subtle',
+                  'h-5 rounded-ctl border px-1.5 font-mono text-[11px]',
+                  encodings.includes(enc) ? 'border-line-strong bg-surface-2 text-fg' : 'border-line text-muted hover:text-fg',
                 )}
               >
                 {enc}
@@ -121,22 +117,21 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
       </form>
 
       {hits && (
-        <div>
-          <p className="mb-1.5 text-xs text-muted">
-            Найдено: {hits.length}
-            {hits.length > 0 && ' · совпадение — повод для гипотезы, а не доказательство'}
+        <div className="flex min-h-0 flex-col border-t border-line">
+          <p className="px-4 py-1.5 text-xs text-muted">
+            Найдено: {hits.length}.{hits.length > 0 && ' Совпадение значения — повод для гипотезы, а не доказательство.'}
           </p>
-          <ul className="flex max-h-72 flex-col gap-0.5 overflow-y-auto">
+          <ul className="min-h-0 overflow-y-auto">
             {hits.map((h) => (
               <li key={`${h.offset}:${h.length}`}>
                 <button
                   type="button"
                   onClick={() => onSelect(h)}
-                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-surface-2"
+                  className="flex h-7 w-full items-center gap-3 border-t border-line px-4 text-left font-mono text-[12px] hover:bg-surface-2"
                 >
-                  <span className="font-mono text-[11.5px] text-info">{formatOffset(h.offset)}</span>
-                  <span className="font-mono text-[11.5px] text-fg">{toHex(bytes.subarray(h.offset, h.offset + h.length))}</span>
-                  <span className="ml-auto font-mono text-[10.5px] text-subtle">{h.encodings.join(' ')}</span>
+                  <span className="w-14 text-muted">{formatOffset(h.offset)}</span>
+                  <span>{toHex(bytes.subarray(h.offset, h.offset + h.length))}</span>
+                  <span className="ml-auto text-[11px] text-muted">{h.encodings.join(' ')}</span>
                 </button>
               </li>
             ))}

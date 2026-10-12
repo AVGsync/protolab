@@ -1,114 +1,142 @@
 import { CaretDownIcon, CaretRightIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
-import { MeaningMark, type Message, type ParsedField } from '@/entities/message';
-import { cn } from '@/shared/lib';
-import { fieldColor } from '../model/palette';
+import { fieldRange, MeaningMark, type FieldLink, type Message, type ParsedField } from '@/entities/message';
+import { cn, type ByteRange } from '@/shared/lib';
+import { fieldSwatchClass, Status } from '@/shared/ui';
 
 export interface FieldTableProps {
   message: Message;
-  /** Called with a message-relative range. */
-  onSelectRange: (offset: number, length: number) => void;
+  /** Selection in the directed stream: the row of the selected field is marked. */
+  selection: ByteRange | null;
+  link: FieldLink | null;
+  /** Receives a stream range. */
+  onSelectRange: (range: ByteRange) => void;
+  onLink: (link: FieldLink | null) => void;
 }
 
-/** Parsed fields with their status: what is derived by rules vs. what remains a hypothesis. */
-export function FieldTable({ message, onSelectRange }: FieldTableProps) {
+const sameRange = (a: ByteRange | null, b: ByteRange) => a !== null && a.offset === b.offset && a.length === b.length;
+
+/** Parsed fields: derived by rules vs. left as a hypothesis. Hovering a row lights up its bytes, a click selects them. */
+export function FieldTable({ message, selection, link, onSelectRange, onLink }: FieldTableProps) {
   return (
     <div className="flex flex-col gap-2">
       {message.issues.length > 0 && (
-        <ul className="px-3 py-2 text-xs text-warn">
-          {message.issues.map((i) => (
-            <li key={i}>{i}</li>
+        <ul className="flex flex-col gap-1 text-xs">
+          {message.issues.map((issue) => (
+            <li key={issue}>
+              <Status tone="warn">{issue}</Status>
+            </li>
           ))}
         </ul>
       )}
-      <table className="w-full text-[12px]">
+      <table className="w-full border-collapse text-[12px]">
         <thead>
           <tr className="text-left text-xs text-muted">
-            <th className="py-1 pr-2 pl-1 font-normal">Поле</th>
-            <th className="py-1 pr-2 font-normal">@ · тип</th>
-            <th className="py-1 pr-2 font-normal">Значение</th>
-            <th className="py-1 font-normal">Смысл</th>
+            <th className="h-6 border-b border-line pr-2 font-normal">Поле</th>
+            <th className="h-6 border-b border-line pr-2 text-right font-normal" title="Смещение в сообщении">
+              @
+            </th>
+            <th className="h-6 border-b border-line px-2 font-normal">Тип</th>
+            <th className="h-6 border-b border-line pr-2 font-normal">Значение</th>
+            <th
+              className="h-6 border-b border-line font-normal"
+              title="Пометка есть у гипотез и подтверждённых полей; поле без пометки описывает только структуру"
+            >
+              Смысл
+            </th>
           </tr>
         </thead>
         <tbody>
           {message.fields.map((f, i) => (
-            <FieldRow key={f.path} field={f} color={fieldColor(i)} depth={0} onSelectRange={onSelectRange} />
+            <FieldRow key={f.path} message={message} field={f} tone={i} depth={0} selection={selection} link={link} onSelectRange={onSelectRange} onLink={onLink} />
           ))}
-          {message.unknown.map((u) => (
-            <tr
-              key={`u${u.offset}`}
-              onClick={() => onSelectRange(u.offset, u.length)}
-              className="cursor-pointer border-t border-line/60 text-muted hover:bg-surface-2"
-            >
-              <td className="py-1 pr-2 pl-1 italic">неизвестно</td>
-              <td className="pr-2 font-mono whitespace-nowrap">
-                {u.offset} · {u.length} Б
-              </td>
-              <td colSpan={2} className="text-subtle">
-                не описано полями
-              </td>
-            </tr>
-          ))}
+          {message.unknown.map((u) => {
+            const range = { offset: message.offset + u.offset, length: u.length };
+            return (
+              <tr
+                key={`u${u.offset}`}
+                onClick={() => onSelectRange(range)}
+                className={cn('cursor-pointer border-b border-line text-muted hover:bg-surface-2', sameRange(selection, range) && 'bg-selection hover:bg-selection')}
+              >
+                <td className="py-1.5 pr-2 pl-4">не описано</td>
+                <td className="pr-2 text-right font-mono">{u.offset}</td>
+                <td className="px-2 font-mono">{u.length} Б</td>
+                <td colSpan={2} />
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function FieldRow({
-  field,
-  color,
-  depth,
-  onSelectRange,
-}: {
+interface FieldRowProps extends Omit<FieldTableProps, 'selection'> {
+  selection: ByteRange | null;
   field: ParsedField;
-  color?: string;
+  tone: number;
   depth: number;
-  onSelectRange: (offset: number, length: number) => void;
-}) {
+}
+
+function FieldRow({ message, field, tone, depth, selection, link, onSelectRange, onLink }: FieldRowProps) {
   const [open, setOpen] = useState(depth === 0 && (field.children?.length ?? 0) <= 4);
-  const hasChildren = (field.children?.length ?? 0) > 0;
+  const children = field.children ?? [];
+  const range = fieldRange(message, field);
+  const selected = sameRange(selection, range);
+  const linked = link?.messageIndex === message.index && link.path === field.path;
+  const violation = field.status === 'violation';
+  const showMeaning = field.meaningStatus === 'hypothesis' || field.meaningStatus === 'confirmed';
+
   return (
     <>
       <tr
-        onClick={() => onSelectRange(field.offset, field.length)}
-        className={cn('cursor-pointer border-t border-line/60 align-top hover:bg-surface-2', field.status === 'violation' && 'bg-danger/8')}
+        onClick={() => onSelectRange(range)}
+        onMouseEnter={() => onLink({ messageIndex: message.index, path: field.path, range })}
+        onMouseLeave={() => onLink(null)}
+        className={cn(
+          'cursor-pointer border-b border-line align-top',
+          selected ? 'bg-selection' : linked && 'bg-surface-2',
+          violation && 'text-danger',
+        )}
       >
-        <td className="py-1 pr-2 whitespace-nowrap" style={{ paddingLeft: 4 + depth * 14 }}>
-          <span className="inline-flex items-center gap-1.5">
-            {hasChildren ? (
+        <td className="py-1.5 pr-2 whitespace-nowrap" style={{ paddingLeft: 16 + depth * 12 }}>
+          <span className="relative inline-flex items-center gap-2">
+            {children.length > 0 ? (
               <button
                 type="button"
+                aria-label={open ? 'Свернуть' : 'Развернуть'}
                 onClick={(e) => {
                   e.stopPropagation();
                   setOpen(!open);
                 }}
-                className="text-subtle hover:text-fg"
+                className="absolute -left-4 text-muted hover:text-fg"
               >
                 {open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}
               </button>
-            ) : (
-              color && <span className="size-2 " style={{ background: color }} />
-            )}
-            <span className="font-mono">{field.name}</span>
+            ) : null}
+            {depth === 0 && <i aria-hidden className={cn('size-2 shrink-0', violation ? 'bg-danger' : fieldSwatchClass(tone))} />}
+            <span className={cn('font-mono', depth > 0 && 'text-muted')}>{field.name}</span>
           </span>
         </td>
-        <td className="py-1 pr-2 font-mono whitespace-nowrap text-subtle">
-          {field.offset} · {field.type}
-        </td>
-        <td className="py-1 pr-2">
-          <span className={cn('font-mono', field.status === 'violation' ? 'text-danger' : field.status === 'unknown' ? 'text-warn' : 'text-fg')}>
-            {field.display}
-          </span>
+        <td className="py-1.5 pr-2 text-right font-mono text-muted">{field.offset}</td>
+        <td className="px-2 py-1.5 font-mono whitespace-nowrap text-muted">{field.type}</td>
+        <td className="py-1.5 pr-2">
+          <span className={cn('font-mono', field.status === 'unknown' && 'text-warn')}>{field.display}</span>
           {field.issue && <div className="text-[11px] text-danger">{field.issue}</div>}
         </td>
-        <td className="py-1">
-          {field.meaning && <div className="text-muted">{field.meaning}</div>}
-          {field.meaningStatus && field.type !== 'struct' && <MeaningMark status={field.meaningStatus} />}
+        <td className="py-1.5">
+          {field.meaning && <span className={violation ? '' : 'text-muted'}>{field.meaning}</span>}
+          {showMeaning && field.type !== 'struct' && (
+            <div>
+              <MeaningMark status={field.meaningStatus!} />
+            </div>
+          )}
         </td>
       </tr>
       {open &&
-        field.children?.map((c) => <FieldRow key={c.path} field={c} depth={depth + 1} onSelectRange={onSelectRange} />)}
+        children.map((c) => (
+          <FieldRow key={c.path} message={message} field={c} tone={tone} depth={depth + 1} selection={selection} link={link} onSelectRange={onSelectRange} onLink={onLink} />
+        ))}
     </>
   );
 }
