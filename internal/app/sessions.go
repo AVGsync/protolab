@@ -167,7 +167,7 @@ func (a *App) StreamBytes(id string, dir model.Direction, offset, length int) ([
 		return nil, total, badRequest("offset вне потока (0–%d)", total)
 	}
 	end := total
-	if length >= 0 && offset+length < total {
+	if length >= 0 && length < total-offset { // not offset+length: it may overflow
 		end = offset + length
 	}
 	return data[offset:end], total, nil

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"log/slog"
+	"math"
 	"net/netip"
 	"slices"
 	"testing"
@@ -134,6 +135,9 @@ func TestDamagedCaptureImportsWhatIsReadable(t *testing.T) {
 	if err != nil || len(sessions) != 2 {
 		t.Fatalf("sessions: %d %v", len(sessions), err)
 	}
+	if data, total, err := a.StreamBytes(sessions[0].ID, model.C2S, 1, math.MaxInt); err != nil || len(data) != total-1 {
+		t.Errorf("huge length: %d of %d bytes, %v", len(data), total, err)
+	}
 	for i, want := range []string{"ask", "ping"} { // ordered by start time
 		_ = i
 		found := false
@@ -182,12 +186,13 @@ func TestOneOversizedSessionDoesNotBlockTheOthers(t *testing.T) {
 
 func TestLimitsAreEnforcedExplicitly(t *testing.T) {
 	limits := Limits{
-		MaxCaptureBytes: 4 << 10,
-		MaxPackets:      12,
-		MaxSessions:     1,
-		MaxMessages:     1,
-		MaxMessageBytes: 64 << 10,
-		MaxStreamBytes:  1 << 20,
+		MaxCaptureBytes:     4 << 10,
+		MaxPackets:          12,
+		MaxSessions:         1,
+		MaxMessages:         1,
+		MaxMessageBytes:     64 << 10,
+		MaxStreamBytes:      1 << 20,
+		MaxTotalStreamBytes: 4 << 20,
 	}
 	a, err := New(Config{DataDir: t.TempDir(), Limits: limits, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
@@ -237,7 +242,8 @@ func TestLimitsAreEnforcedExplicitly(t *testing.T) {
 	})
 	t.Run("declared", func(t *testing.T) {
 		got := a.SystemInfo().Limits
-		if got.MaxPackets != 12 || got.MaxSessions != 1 || got.MaxMessages != 1 || got.MaxCaptureBytes != 4<<10 {
+		if got.MaxPackets != 12 || got.MaxSessions != 1 || got.MaxMessages != 1 || got.MaxCaptureBytes != 4<<10 ||
+			got.MaxStreamBytes != 1<<20 || got.MaxTotalStreamBytes != 4<<20 {
 			t.Errorf("declared limits = %+v", got)
 		}
 	})
@@ -321,5 +327,47 @@ func TestRunsStartedInTheSameMillisecond(t *testing.T) {
 		if r.PreviousRunID != want[i] {
 			t.Errorf("run %d: previousRunId = %q, want %q", i, r.PreviousRunID, want[i])
 		}
+	}
+}
+
+func TestUnsupportedLinkTypeIsNamed(t *testing.T) {
+	// Two interfaces: Ethernet with a TCP connection, and an unsupported one.
+	var buf bytes.Buffer
+	le := binary.LittleEndian
+	block := func(typ uint32, body []byte) {
+		for len(body)%4 != 0 {
+			body = append(body, 0)
+		}
+		total := uint32(12 + len(body))
+		buf.Write(le.AppendUint32(le.AppendUint32(nil, typ), total))
+		buf.Write(body)
+		buf.Write(le.AppendUint32(nil, total))
+	}
+	shb := le.AppendUint32(nil, 0x1a2b3c4d)
+	shb = le.AppendUint16(le.AppendUint16(shb, 1), 0)
+	block(0x0a0d0d0a, le.AppendUint64(shb, ^uint64(0)))
+	block(1, le.AppendUint32(le.AppendUint32(nil, 1), 65535))   // EN10MB
+	block(1, le.AppendUint32(le.AppendUint32(nil, 147), 65535)) // USER0
+	epb := func(iface uint32, data []byte) {
+		b := le.AppendUint32(nil, iface)
+		b = le.AppendUint64(b, 0)
+		b = le.AppendUint32(le.AppendUint32(b, uint32(len(data))), uint32(len(data)))
+		block(6, append(b, data...))
+	}
+	frame := netpkt.BuildEthernetTCP(netip.MustParseAddrPort("10.0.0.1:40000"), netip.MustParseAddrPort("10.0.0.2:5020"), 1, 0, netpkt.SYN, 8192, nil, netpkt.BuildOptions{})
+	epb(0, frame)
+	epb(1, []byte{1, 2, 3, 4})
+	epb(1, []byte{5, 6, 7, 8})
+
+	a := newTestApp(t, t.TempDir())
+	p, err := a.CreateProject(model.CreateProjectInput{Name: "Интерфейсы"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := importSync(t, a, p, "two-ifaces.pcapng", buf.Bytes())
+	d := diagnosticByCode(c.Diagnostics, netpkt.CodeUnsupportedLink)
+	if c.SessionCount != 1 || c.Interfaces != 2 || d == nil || d.Count != 2 ||
+		d.Message != "Неподдерживаемый тип канального уровня LINKTYPE_147 — пакеты пропущены" || !slices.Equal(d.PacketNumbers, []int{2, 3}) {
+		t.Errorf("capture: %d sessions, %d interfaces, diagnostic %+v", c.SessionCount, c.Interfaces, d)
 	}
 }

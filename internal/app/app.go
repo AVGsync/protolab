@@ -13,32 +13,37 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AVGsync/protolab/internal/engine"
 	"github.com/AVGsync/protolab/internal/jobs"
 	"github.com/AVGsync/protolab/internal/model"
 	"github.com/AVGsync/protolab/internal/store"
+	"github.com/AVGsync/protolab/internal/tcpflow"
 )
 
 // Limits are the declared protective limits. Exceeding one is reported
 // explicitly, data is never cut silently.
 type Limits struct {
-	MaxCaptureBytes int64
-	MaxPackets      int
-	MaxSessions     int
-	MaxMessages     int // per project-wide message query
-	MaxMessageBytes int // framing upper bound when a spec does not set maxLength
-	MaxStreamBytes  int // per reassembled direction
+	MaxCaptureBytes     int64
+	MaxPackets          int
+	MaxSessions         int
+	MaxMessages         int   // per message query (one session or the comparison view)
+	MaxMessageBytes     int   // framing upper bound when a spec does not set maxLength
+	MaxStreamBytes      int   // per reassembled direction
+	MaxTotalStreamBytes int64 // all reassembled directions of one capture together
 }
 
 // DefaultLimits cover the reference load of the task (100 MiB, 250k packets,
-// 1000 connections, 100k messages) with a safety margin.
+// 1000 connections, 100k messages) with a safety margin; docs/performance.md
+// has the measurements.
 func DefaultLimits() Limits {
 	return Limits{
-		MaxCaptureBytes: 512 << 20,
-		MaxPackets:      2_000_000,
-		MaxSessions:     20_000,
-		MaxMessages:     200_000,
-		MaxMessageBytes: 64 << 10,
-		MaxStreamBytes:  64 << 20,
+		MaxCaptureBytes:     512 << 20,
+		MaxPackets:          2_000_000,
+		MaxSessions:         20_000,
+		MaxMessages:         200_000,
+		MaxMessageBytes:     engine.DefaultMaxLength,
+		MaxStreamBytes:      tcpflow.DefaultMaxStreamBytes,
+		MaxTotalStreamBytes: tcpflow.DefaultMaxTotalBytes,
 	}
 }
 

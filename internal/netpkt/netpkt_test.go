@@ -470,3 +470,33 @@ func TestBuildEthernetTCP(t *testing.T) {
 		t.Errorf("ttl = %d", f[14+8])
 	}
 }
+
+// TestEverythingAtOnce: a double-tagged frame with IPv4 options, TCP options,
+// Ethernet padding and an FCS, as a mirror port records it. The IPv4 total
+// length, not the frame length, bounds the payload.
+func TestEverythingAtOnce(t *testing.T) {
+	for _, payload := range [][]byte{{0xA5}, []byte("fourteen bytes")} {
+		ip := withTCPOptions(ipPacket(payload), 12)
+		withOpts := slices.Clone(ip[:20])
+		withOpts = append(withOpts, 0x94, 0x04, 0, 0) // Router Alert
+		withOpts = append(withOpts, ip[20:]...)
+		withOpts[0] = 0x46
+		binary.BigEndian.PutUint16(withOpts[2:4], uint16(len(withOpts)))
+		refreshChecksums(withOpts)
+
+		eth := slices.Concat(ethFrame(nil, BuildOptions{})[:12], []byte{0x08, 0x00}, withOpts)
+		f := vlanTagged(eth, 0x88a8, 0x8100)
+		if len(f) < 64 {
+			f = append(f, make([]byte, 64-len(f))...) // padding
+		}
+		f = append(f, 0xde, 0xad, 0xbe, 0xef) // FCS
+		checkSegment(t, decodeOK(t, pcap.LinkTypeEthernet, f, len(f)), payload)
+
+		// The same frame cut by a snaplen inside the payload.
+		cut := 14 + 8 + 24 + 32 + len(payload)/2
+		s := decodeOK(t, pcap.LinkTypeEthernet, f[:cut], len(f))
+		if s.PayloadLen != len(payload) || len(s.Payload) != len(payload)/2 || s.Checksum != ChecksumUnknown {
+			t.Errorf("cut frame: %d of %d bytes, checksum %d", len(s.Payload), s.PayloadLen, s.Checksum)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strings"
 
 	"github.com/AVGsync/protolab/internal/model"
 	"github.com/AVGsync/protolab/internal/spec"
@@ -46,7 +47,8 @@ func (st *stream) frameLengthPrefixed(f *framing) {
 	n := len(st.data)
 	headerLen := f.lenOffset + f.lenSize
 	pos := 0
-	needSync := false
+	// Without the connection start, offset 0 is probably inside a message.
+	needSync := st.unknownStart
 	for pos < n {
 		if needSync {
 			next := st.findSync(f.sync, pos)
@@ -138,12 +140,21 @@ func (st *stream) frameDelimited(delim []byte) {
 			continue
 		}
 		end := hit + len(delim)
-		st.emit(start, end-start, "", false)
+		st.emitDelimited(start, end-start, "")
 		start, i = end, end
 	}
 	if start < n {
-		st.emit(start, n-start, "Нет завершающего разделителя", true)
+		st.emitDelimited(start, n-start, "Нет завершающего разделителя")
 	}
+}
+
+// emitDelimited emits a delimited frame; issue marks one without its
+// delimiter. Without the connection start the first frame lacks its beginning.
+func (st *stream) emitDelimited(offset, length int, issue string) {
+	if offset == 0 && st.unknownStart {
+		issue = strings.TrimPrefix(issue+"; ", "; ") + "Начало сообщения не захвачено"
+	}
+	st.emit(offset, length, issue, issue != "")
 }
 
 func (st *stream) frameFixed(size int) {

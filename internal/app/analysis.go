@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -160,8 +161,9 @@ func (c *countingReader) Read(b []byte) (int, error) {
 }
 
 type decodeStat struct {
-	count   int
-	packets []int
+	count     int
+	packets   []int
+	linkTypes []uint16 // for unsupported_linktype: which ones
 }
 
 // analyzeFile reads a capture, reassembles TCP and builds all DTOs.
@@ -217,6 +219,7 @@ func analyze(ctx context.Context, in analyzeInput, progress jobs.Progress) (*cap
 		ChecksumPolicy: in.settings.ChecksumPolicy,
 		TargetPorts:    in.settings.TargetPorts,
 		MaxStreamBytes: in.limits.MaxStreamBytes,
+		MaxTotalBytes:  in.limits.MaxTotalStreamBytes,
 	})
 	decodeErrs := map[string]*decodeStat{}
 	var readDiag []model.Diagnostic
@@ -290,6 +293,9 @@ func analyze(ctx context.Context, in analyzeInput, progress jobs.Progress) (*cap
 			if len(st.packets) < 10 {
 				st.packets = append(st.packets, pkt.Number)
 			}
+			if code == netpkt.CodeUnsupportedLink && !slices.Contains(st.linkTypes, pkt.LinkType) {
+				st.linkTypes = append(st.linkTypes, pkt.LinkType)
+			}
 			continue
 		}
 		asm.Add(tcpflow.Input{Number: pkt.Number, Timestamp: pkt.Timestamp, Seg: seg})
@@ -346,7 +352,7 @@ func analyze(ctx context.Context, in analyzeInput, progress jobs.Progress) (*cap
 			PacketNumbers: damaged.packets,
 		})
 	}
-	res.diagnostics = append(res.diagnostics, decodeDiagnostics(decodeErrs, ifaces)...)
+	res.diagnostics = append(res.diagnostics, decodeDiagnostics(decodeErrs)...)
 	res.diagnostics = append(res.diagnostics, sessionDiag...)
 	res.diagnostics = append(res.diagnostics, aggregateSessionDiagnostics(res.sessions)...)
 	if in.capture.SHA256 != "" && in.capture.SHA256 != res.sha256 {
@@ -377,7 +383,7 @@ var decodeMessages = map[string]struct{ level, text string }{
 	netpkt.CodeTruncatedHeader: {model.LevelWarning, "Заголовки TCP/IP обрезаны при захвате — пакеты пропущены"},
 }
 
-func decodeDiagnostics(stats map[string]*decodeStat, ifaces []pcap.Interface) []model.Diagnostic {
+func decodeDiagnostics(stats map[string]*decodeStat) []model.Diagnostic {
 	codes := make([]string, 0, len(stats))
 	for code := range stats {
 		codes = append(codes, code)
@@ -391,8 +397,12 @@ func decodeDiagnostics(stats map[string]*decodeStat, ifaces []pcap.Interface) []
 			m = struct{ level, text string }{model.LevelWarning, "Пакеты не разобраны (" + code + ")"}
 		}
 		text := m.text
-		if code == netpkt.CodeUnsupportedLink && len(ifaces) > 0 {
-			text = fmt.Sprintf("Неподдерживаемый тип канального уровня %s — пакеты пропущены", pcap.LinkTypeName(ifaces[0].LinkType))
+		if code == netpkt.CodeUnsupportedLink && len(st.linkTypes) > 0 {
+			names := make([]string, len(st.linkTypes))
+			for i, lt := range st.linkTypes {
+				names[i] = pcap.LinkTypeName(lt)
+			}
+			text = fmt.Sprintf("Неподдерживаемый тип канального уровня %s — пакеты пропущены", strings.Join(names, ", "))
 		}
 		out = append(out, model.Diagnostic{Level: m.level, Code: code, Message: text, Count: st.count, PacketNumbers: st.packets})
 	}

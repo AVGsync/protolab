@@ -514,11 +514,13 @@ type CreateReportInput struct {
 }
 
 type SystemLimits struct {
-	MaxCaptureBytes int64 `json:"maxCaptureBytes"`
-	MaxPackets      int   `json:"maxPackets"`
-	MaxSessions     int   `json:"maxSessions"`
-	MaxMessages     int   `json:"maxMessages"`
-	MaxMessageBytes int   `json:"maxMessageBytes"`
+	MaxCaptureBytes     int64 `json:"maxCaptureBytes"`
+	MaxPackets          int   `json:"maxPackets"`
+	MaxSessions         int   `json:"maxSessions"`
+	MaxMessages         int   `json:"maxMessages"`
+	MaxMessageBytes     int   `json:"maxMessageBytes"`
+	MaxStreamBytes      int   `json:"maxStreamBytes"`      // one reassembled direction
+	MaxTotalStreamBytes int64 `json:"maxTotalStreamBytes"` // all directions of a capture together
 }
 
 type SystemRuntime struct {

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"unsafe"
 
 	"github.com/AVGsync/protolab/internal/engine"
 	"github.com/AVGsync/protolab/internal/model"
@@ -14,14 +15,18 @@ import (
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
+// messageCacheBytes is the memory budget of a project's message cache.
+const messageCacheBytes = 256 << 20
+
 // messageCache is an LRU of parsed sessions keyed by session, spec hash,
 // the analysis that produced the session and the project revision (actions
-// and settings change the result). Its budget is a number of messages, not
-// of entries: one session of a long capture can hold more messages than
-// hundreds of short ones.
+// and settings change the result). Its budget is an estimate of the memory
+// the messages hold, not a number of entries or messages: one session of a
+// long capture can hold more messages than hundreds of short ones, and a
+// message with a 255-entry array outweighs a hundred short commands.
 type messageCache struct {
 	mu     sync.Mutex
-	budget int // messages
+	budget int // bytes
 	used   int
 	order  *list.List
 	items  map[string]*list.Element
@@ -30,12 +35,40 @@ type messageCache struct {
 type cacheEntry struct {
 	key    string
 	parsed engine.ParsedSession
+	weight int
 }
-
-func (e *cacheEntry) weight() int { return len(e.parsed.Messages) + 1 }
 
 func newMessageCache(budget int) *messageCache {
 	return &messageCache{budget: budget, order: list.New(), items: map[string]*list.Element{}}
+}
+
+// parsedSize estimates the memory a parsed session holds.
+func parsedSize(ps engine.ParsedSession) int {
+	n := int(unsafe.Sizeof(ps)) + len(ps.Unframed)*int(unsafe.Sizeof(engine.Unframed{}))
+	for i := range ps.Messages {
+		m := &ps.Messages[i]
+		n += int(unsafe.Sizeof(*m)) + len(m.Data) + 8*len(m.PacketNumbers) +
+			len(m.Unknown)*int(unsafe.Sizeof(model.ByteRange{})) + fieldsSize(m.Fields)
+		for _, s := range m.Issues {
+			n += len(s) + 16
+		}
+	}
+	return n
+}
+
+func fieldsSize(fields []model.ParsedField) int {
+	n := 0
+	for i := range fields {
+		f := &fields[i]
+		// Name, Type and the meaning strings are shared with the spec.
+		n += int(unsafe.Sizeof(*f)) + len(f.Path) + len(f.Display) + len(f.Issue) + fieldsSize(f.Children)
+		if s, ok := f.Value.(string); ok {
+			n += len(s) + 16
+		} else if f.Value != nil {
+			n += 8
+		}
+	}
+	return n
 }
 
 func (c *messageCache) get(key string) (engine.ParsedSession, bool) {
@@ -51,22 +84,22 @@ func (c *messageCache) get(key string) (engine.ParsedSession, bool) {
 func (c *messageCache) put(key string, parsed engine.ParsedSession) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	entry := &cacheEntry{key: key, parsed: parsed}
-	if entry.weight() > c.budget {
+	entry := &cacheEntry{key: key, parsed: parsed, weight: parsedSize(parsed)}
+	if entry.weight > c.budget {
 		return // larger than the whole cache: parse again on demand
 	}
 	if el, ok := c.items[key]; ok {
-		c.used -= el.Value.(*cacheEntry).weight()
+		c.used -= el.Value.(*cacheEntry).weight
 		c.order.Remove(el)
 	}
 	c.items[key] = c.order.PushFront(entry)
-	c.used += entry.weight()
+	c.used += entry.weight
 	for c.used > c.budget {
 		last := c.order.Back()
 		old := last.Value.(*cacheEntry)
 		c.order.Remove(last)
 		delete(c.items, old.key)
-		c.used -= old.weight()
+		c.used -= old.weight
 	}
 }
 
@@ -85,9 +118,10 @@ func engineInput(sd *sessionData, actions []model.ActionEntry, actionIDs []strin
 	for i, dir := range model.Directions {
 		ds := sd.stream(dir)
 		in.Streams[i] = engine.StreamInput{
-			Bytes:    sd.flow.Stream(dir).Data,
-			Gaps:     ds.Gaps,
-			Segments: ds.Segments,
+			Bytes:        sd.flow.Stream(dir).Data,
+			Gaps:         ds.Gaps,
+			Segments:     ds.Segments,
+			UnknownStart: !ds.StartKnown,
 		}
 	}
 	return in

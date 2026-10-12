@@ -102,7 +102,15 @@ func (b *builder) diagnostics(s *Session, checks checksumStats) []model.Diagnost
 		st := s.Streams[i]
 		diags = h.gapDiagnostics(diags, st.Gaps)
 		diags = conflictDiagnostics(diags, h.dir, st.Conflicts)
-		if h.tooLarge {
+		switch {
+		case h.overall:
+			diags = append(diags, model.Diagnostic{
+				Level: model.LevelError,
+				Code:  codeStreamTooLarge,
+				Message: fmt.Sprintf("%s: потоки записи вместе превышают предел %s, байты этого потока после смещения %d не сохранены",
+					arrow(h.dir), formatSize(b.opt.maxTotal), h.length),
+			})
+		case h.tooLarge:
 			diags = append(diags, model.Diagnostic{
 				Level:   model.LevelError,
 				Code:    codeStreamTooLarge,
@@ -112,10 +120,11 @@ func (b *builder) diagnostics(s *Session, checks checksumStats) []model.Diagnost
 	}
 	if checks.offloaded > 0 {
 		diags = append(diags, model.Diagnostic{
-			Level:   model.LevelInfo,
-			Code:    codeChecksumOffload,
-			Message: "Неверная контрольная сумма TCP — вероятно checksum offloading на узле захвата; данные используются",
-			Count:   checks.offloaded,
+			Level:         model.LevelInfo,
+			Code:          codeChecksumOffload,
+			Message:       "Неверная контрольная сумма TCP — вероятно checksum offloading на узле захвата; данные используются",
+			Count:         checks.offloaded,
+			PacketNumbers: checks.offloadedRef,
 		})
 	}
 	if checks.damaged > 0 {

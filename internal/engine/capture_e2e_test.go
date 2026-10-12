@@ -106,3 +106,44 @@ func TestLostSegmentResynchronises(t *testing.T) {
 		t.Errorf("unframed = %+v, want %+v", got.Unframed, want)
 	}
 }
+
+// TestUnknownStreamStartIsNotAMessageBoundary: when the start of the
+// connection was not captured, offset 0 is just the first byte seen, usually
+// inside a message. The framer looks for the sync pattern instead of reading
+// a length there.
+func TestUnknownStreamStartIsNotAMessageBoundary(t *testing.T) {
+	m1 := tlFrame(0x10, 9)        // heartbeat; only its last 3 bytes were captured
+	m2 := tlFrame(0x03, 10, 0x01) // measure
+	m3 := tlFrame(0x01, 11)       // read params
+	data := concat(m1[3:], m2, m3)
+	in := StreamInput{Bytes: data, Segments: []model.StreamSegment{seg(0, len(data), 1, 1)}}
+
+	t.Run("length_prefixed with sync", func(t *testing.T) {
+		in := in
+		in.UnknownStart = true
+		got := ParseSession(thermoLink(t), newInput("s", in, StreamInput{}))
+		if len(got.Messages) != 2 || got.Messages[0].Offset != 3 || got.Messages[0].Status != model.MsgOK || got.Messages[1].Status != model.MsgOK {
+			t.Fatalf("messages = %+v", got.Messages)
+		}
+		if want := []Unframed{{Direction: model.C2S, Offset: 0, Length: 3}}; !slices.Equal(got.Unframed, want) {
+			t.Errorf("unframed = %+v", got.Unframed)
+		}
+		// A known start keeps reading a length at offset 0, as before.
+		in.UnknownStart = false
+		if got := ParseSession(thermoLink(t), newInput("s", in, StreamInput{})); len(got.Messages) == 2 && got.Messages[0].Offset == 3 {
+			t.Error("known start resynchronised")
+		}
+	})
+	t.Run("delimiter", func(t *testing.T) {
+		s := mustSpec(t, `{"format":"protolab/v1","framing":{"kind":"delimiter","delimiter":"0A"},"messages":[{"id":"line","match":[],"fields":[]}]}`)
+		lines := []byte("ail of a line\nfull line\n")
+		in := StreamInput{Bytes: lines, Segments: []model.StreamSegment{seg(0, len(lines), 1, 1)}, UnknownStart: true}
+		got := ParseSession(s, newInput("s", in, StreamInput{}))
+		if len(got.Messages) != 2 || got.Messages[0].Status != model.MsgPartial || got.Messages[1].Status != model.MsgOK {
+			t.Fatalf("messages = %+v", got.Messages)
+		}
+		if !slices.Contains(got.Messages[0].Issues, "Начало сообщения не захвачено") {
+			t.Errorf("issues = %v", got.Messages[0].Issues)
+		}
+	})
+}

@@ -39,11 +39,13 @@ func (a *App) SystemInfo() model.SystemInfo {
 		BuildDate:     b.Date,
 		EngineVersion: engine.Version,
 		Limits: model.SystemLimits{
-			MaxCaptureBytes: l.MaxCaptureBytes,
-			MaxPackets:      l.MaxPackets,
-			MaxSessions:     l.MaxSessions,
-			MaxMessages:     l.MaxMessages,
-			MaxMessageBytes: l.MaxMessageBytes,
+			MaxCaptureBytes:     l.MaxCaptureBytes,
+			MaxPackets:          l.MaxPackets,
+			MaxSessions:         l.MaxSessions,
+			MaxMessages:         l.MaxMessages,
+			MaxMessageBytes:     l.MaxMessageBytes,
+			MaxStreamBytes:      l.MaxStreamBytes,
+			MaxTotalStreamBytes: l.MaxTotalStreamBytes,
 		},
 		Runtime: model.SystemRuntime{
 			OS:            runtime.GOOS,

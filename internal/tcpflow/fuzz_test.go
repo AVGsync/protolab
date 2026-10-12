@@ -39,10 +39,17 @@ func FuzzAssembler(f *testing.F) {
 			seg := netpkt.Segment{
 				Src: src, Dst: dst, Seq: seq, Ack: seq ^ uint32(d[7]) - 0x80,
 				Flags: netpkt.TCPFlags(d[0] & 0x3f), Payload: payload[:captured], PayloadLen: n,
+				Checksum: netpkt.ChecksumStatus(d[5]>>6) % 3,
 			}
 			a.Add(Input{Number: i/8 + 1, Seg: seg})
 		}
 		for _, s := range a.Finish() {
+			// safeBuild turns a panic into a failed session; here it is a bug.
+			for _, d := range s.Diagnostics {
+				if d.Code == codeReassemblyFailed {
+					t.Fatal(d.Message)
+				}
+			}
 			for _, st := range s.Streams {
 				checkStreamInvariants(t, st)
 			}

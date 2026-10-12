@@ -272,15 +272,16 @@ func (b *builder) measure() {
 		}
 	}
 	for _, h := range b.halves {
-		h.finishExtent(b.opt.maxBytes)
+		h.finishExtent(b.opt.maxBytes, &b.opt.totalLeft)
 	}
 }
 
 // checksumStats are the packets that failed the TCP checksum.
 type checksumStats struct {
-	offloaded  int   // from senders all of whose segments fail: checksum offloading
-	damaged    int   // from senders whose other segments pass
-	damagedRef []int // the first maxPacketRefs of them
+	offloaded    int   // from senders whose segments mostly fail: checksum offloading
+	offloadedRef []int // the first maxPacketRefs of them
+	damaged      int   // from senders whose segments mostly pass
+	damagedRef   []int // the first maxPacketRefs of them
 	// unverified: a damaged segment's bytes are in a stream, no intact copy replaced them.
 	unverified bool
 }
@@ -321,6 +322,9 @@ func (b *builder) place() ([]Packet, checksumStats) {
 				}
 			} else {
 				checks.offloaded++
+				if len(checks.offloadedRef) < maxPacketRefs {
+					checks.offloadedRef = append(checks.offloadedRef, in.Number)
+				}
 			}
 		}
 		p.Annotations = notes

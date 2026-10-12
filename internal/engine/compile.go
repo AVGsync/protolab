@@ -95,7 +95,9 @@ type check struct {
 	fieldIdx int    // first top-level field with the checked name, -1 if none
 }
 
-const defaultMaxLength = 65_536 + 64
+// DefaultMaxLength is the largest length_prefixed message when the spec sets
+// no maxLength: a 64 KiB payload with room for a header.
+const DefaultMaxLength = 65_536 + 64
 
 func compile(s *spec.Spec) *compiled {
 	c := &compiled{ruleIndex: make(map[string]int)}
@@ -127,7 +129,7 @@ func compileFraming(f *spec.Framing) framing {
 	}
 	// A zero-length message would never advance the framer.
 	out.minLen = max(out.minLen, 1)
-	out.maxLen = defaultMaxLength
+	out.maxLen = DefaultMaxLength
 	if f.MaxLength != nil {
 		out.maxLen = int64(*f.MaxLength)
 	}

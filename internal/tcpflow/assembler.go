@@ -15,6 +15,8 @@ type options struct {
 	noChecksums bool // ChecksumIgnore
 	targetPorts map[uint16]bool
 	maxBytes    int64
+	maxTotal    int64
+	totalLeft   int64 // what is left of maxTotal, consumed as finish builds the sessions
 }
 
 func normalize(opt Options) *options {
@@ -27,6 +29,11 @@ func normalize(opt Options) *options {
 	if o.maxBytes <= 0 {
 		o.maxBytes = DefaultMaxStreamBytes
 	}
+	o.maxTotal = opt.MaxTotalBytes
+	if o.maxTotal <= 0 {
+		o.maxTotal = DefaultMaxTotalBytes
+	}
+	o.totalLeft = o.maxTotal
 	for _, p := range opt.TargetPorts {
 		if p > 0 && p <= 0xffff {
 			o.targetPorts[uint16(p)] = true
@@ -36,14 +43,15 @@ func normalize(opt Options) *options {
 }
 
 type assembler struct {
-	opt     *options
-	current map[connKey]*conn // latest instance of every endpoint pair
-	conns   []*conn           // all instances, in order of creation
-	arena   arena
+	opt      *options
+	current  map[connKey]*conn // latest instance of every endpoint pair
+	previous map[connKey]*conn // the instance the latest one replaced
+	conns    []*conn           // all instances, in order of creation
+	arena    arena
 }
 
 func newAssembler(opt Options) *assembler {
-	return &assembler{opt: normalize(opt), current: make(map[connKey]*conn)}
+	return &assembler{opt: normalize(opt), current: make(map[connKey]*conn), previous: make(map[connKey]*conn)}
 }
 
 // connKey is the unordered pair of endpoints.
@@ -68,17 +76,31 @@ func (a *assembler) add(in Input) {
 
 	key := keyOf(seg.Src, seg.Dst)
 	c := a.current[key]
-	if c == nil || c.opensNewInstance(seg) {
+	switch {
+	case c == nil || c.opensNewInstance(seg):
+		if c != nil {
+			a.previous[key] = c
+		}
 		c = &conn{key: key}
 		a.current[key] = c
 		a.conns = append(a.conns, c)
+	case !seg.Flags.Has(netpkt.SYN) && c.space(seg.Src).seen && !c.space(seg.Src).near(seg.Seq):
+		// A late segment of the instance the port reuse replaced (a
+		// retransmitted FIN, say) continues that instance's sequence numbers:
+		// in the new one it could stand for gigabytes of lost bytes. (Hosts
+		// following RFC 6528 give a reused 4-tuple an ISN just above the old
+		// one; their late segments then fall before the new stream, harmlessly.)
+		if p := a.previous[key]; p != nil && p.space(seg.Src).near(seg.Seq) {
+			c = p
+		}
 	}
 	c.add(in)
 }
 
 func (a *assembler) finish() []*Session {
 	conns := a.conns
-	a.conns, a.current, a.arena = nil, make(map[connKey]*conn), arena{}
+	a.conns, a.current, a.previous, a.arena = nil, make(map[connKey]*conn), make(map[connKey]*conn), arena{}
+	a.opt.totalLeft = a.opt.maxTotal
 
 	slices.SortStableFunc(conns, func(x, y *conn) int { return x.inputs[0].Number - y.inputs[0].Number })
 	sessions := make([]*Session, len(conns))
@@ -157,9 +179,48 @@ type conn struct {
 	finLo, finHi bool // FIN sent by key.lo / key.hi
 	rst          bool
 
-	// Sequence number of the first segment sent by key.lo / key.hi.
-	firstLo, firstHi uint32
-	seenLo, seenHi   bool
+	spaceLo, spaceHi seqSpace // sequence numbers used by key.lo / key.hi
+}
+
+// seqSpace is the range of sequence numbers an endpoint used so far.
+type seqSpace struct {
+	seen      bool
+	first     uint32 // of the first segment
+	low, high uint32 // lowest sequence number, end of the furthest segment
+}
+
+// spaceSlack is how far outside the range a sequence number may still belong
+// to the instance: windows and losses are far smaller, while an unrelated
+// instance's random ISN rarely falls this close.
+const spaceSlack = 1 << 24
+
+func (r *seqSpace) note(s *netpkt.Segment) {
+	end := s.Seq + uint32(s.PayloadLen)
+	if s.Flags&(netpkt.SYN|netpkt.FIN) != 0 {
+		end++
+	}
+	if !r.seen {
+		r.seen, r.first, r.low, r.high = true, s.Seq, s.Seq, end
+		return
+	}
+	if int32(s.Seq-r.low) < 0 {
+		r.low = s.Seq
+	}
+	if int32(end-r.high) > 0 {
+		r.high = end
+	}
+}
+
+// near reports whether seq lies within spaceSlack of the range.
+func (r *seqSpace) near(seq uint32) bool {
+	return r.seen && seq-(r.low-spaceSlack) <= r.high-r.low+2*spaceSlack
+}
+
+func (c *conn) space(ep netip.AddrPort) *seqSpace {
+	if ep == c.key.lo {
+		return &c.spaceLo
+	}
+	return &c.spaceHi
 }
 
 func (c *conn) closed() bool { return c.rst || (c.finLo && c.finHi) }
@@ -204,19 +265,11 @@ func (c *conn) acceptsSynAck(s *netpkt.Segment) bool {
 	// only when it was retransmitted right after the handshake, before the
 	// segments already seen: they then continue its sequence numbers.
 	const slack = 1 << 20
-	if first, ok := c.firstSeq(s.Dst); ok && first-s.Ack < slack {
+	if sp := c.space(s.Dst); sp.seen && sp.first-s.Ack < slack {
 		return true
 	}
-	first, ok := c.firstSeq(s.Src)
-	return ok && first-(s.Seq+1) < slack
-}
-
-// firstSeq returns the sequence number of the first segment sent by ep.
-func (c *conn) firstSeq(ep netip.AddrPort) (uint32, bool) {
-	if ep == c.key.lo {
-		return c.firstLo, c.seenLo
-	}
-	return c.firstHi, c.seenHi
+	sp := c.space(s.Src)
+	return sp.seen && sp.first-(s.Seq+1) < slack
 }
 
 func (c *conn) add(in Input) {
@@ -228,15 +281,12 @@ func (c *conn) add(in Input) {
 	case s.Flags.Has(netpkt.SYN|netpkt.ACK) && !c.hasSynAck:
 		c.hasSynAck, c.synAckFrom, c.synAckSeq, c.synAckAck = true, s.Src, s.Seq, s.Ack
 	}
+	if !s.Flags.Has(netpkt.RST) || !c.space(s.Src).seen {
+		c.space(s.Src).note(s) // a reset's number may be anything
+	}
 	if s.Src == c.key.lo {
-		if !c.seenLo {
-			c.firstLo, c.seenLo = s.Seq, true
-		}
 		c.finLo = c.finLo || s.Flags.Has(netpkt.FIN)
 	} else {
-		if !c.seenHi {
-			c.firstHi, c.seenHi = s.Seq, true
-		}
 		c.finHi = c.finHi || s.Flags.Has(netpkt.FIN)
 	}
 	if s.Flags.Has(netpkt.RST) {

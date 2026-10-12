@@ -39,14 +39,24 @@ const (
 	RolesUnknown   = "unknown"   // first sender assumed to be the client
 )
 
-// DefaultMaxStreamBytes bounds a reassembled direction (protective limit).
-const DefaultMaxStreamBytes = 64 << 20
+// Protective limits. Gap bytes are held as zeros, so a stream's size follows
+// its sequence numbers, not the captured bytes.
+const (
+	// DefaultMaxStreamBytes bounds a reassembled direction.
+	DefaultMaxStreamBytes = 64 << 20
+	// DefaultMaxTotalBytes bounds all reassembled directions of a capture together.
+	DefaultMaxTotalBytes = 1 << 30
+)
 
 type Options struct {
 	OverlapPolicy  string // PolicyFirst (default) or PolicyLast
 	ChecksumPolicy string // ChecksumWarn (default) or ChecksumIgnore
 	TargetPorts    []int  // server ports of the device; used to infer roles without a handshake
 	MaxStreamBytes int    // 0 means DefaultMaxStreamBytes
+	// MaxTotalBytes: 0 means DefaultMaxTotalBytes. Sessions are reassembled in
+	// the order of their first packet; a direction that does not fit into what
+	// is left is cut there, with a stream_too_large error like the per-stream limit.
+	MaxTotalBytes int64
 }
 
 // Input is one decoded segment with its capture metadata.

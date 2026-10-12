@@ -258,6 +258,18 @@ func TestChecksumOffloadVersusCorruption(t *testing.T) {
 			t.Errorf("status = %s: bytes of a damaged packet are not verified", s.Status)
 		}
 	})
+	t.Run("intact copy confirms the bytes of a damaged one", func(t *testing.T) {
+		s := one(t, Options{}, seq(handshake(), []pk{
+			C(PA, c1, s1, "abc"),
+			C(PA, c1+3, s1, "def").bad(), // the damage was in the header or the checksum itself
+			C(PA, c1+3, s1, "def"),
+			C(PA, c1+6, s1, "ghi"),
+		}, closing(9, 0)))
+		wantData(t, s, model.C2S, "abcdefghi")
+		if s.Status != statusComplete {
+			t.Errorf("status = %s", s.Status)
+		}
+	})
 	t.Run("damaged sequence number is not trusted", func(t *testing.T) {
 		s := one(t, Options{}, seq(handshake(), []pk{
 			C(PA, c1, s1, "abc"),
@@ -332,5 +344,73 @@ func TestOneFailingSessionDoesNotBreakTheOthers(t *testing.T) {
 	}
 	if bad.Packets[1].Number != 6 || bad.Packets[1].Dir != model.C2S || bad.Stream(model.C2S).Data == nil {
 		t.Errorf("packets = %+v", bad.Packets)
+	}
+}
+
+func TestLateSegmentOfReplacedInstance(t *testing.T) {
+	first := seq(handshake(), []pk{C(PA, c1, s1, "first")}, closing(5, 0))
+	for name, isn := range map[string][2]uint32{
+		"random ISNs":   {0x80000000, 0x90000000},
+		"RFC 6528 ISNs": {ci + 2_500_000, si + 2_500_000}, // the same 4-tuple 10 s later
+	} {
+		t.Run(name, func(t *testing.T) {
+			ci2, si2 := isn[0], isn[1]
+			second := []pk{
+				C(S, ci2, 0, ""),              // 8
+				Sv(SA, si2, ci2+1, ""),        // 9
+				Sv(FA, s1, c1+6, ""),          // 10: late retransmitted FIN of the first instance
+				C(A, ci2+1, si2+1, ""),        // 11
+				C(PA, ci2+1, si2+1, "second"), // 12
+				Sv(PA, si2+1, ci2+7, "reply"), // 13
+				C(A, c1+6, s1+1, ""),          // 14: and the first instance's last ACK, late too
+			}
+			ss := assemble(t, Options{}, seq(first, second))
+			if len(ss) != 2 {
+				t.Fatalf("got %d sessions", len(ss))
+			}
+			s := ss[1]
+			if n := len(s.Stream(model.S2C).Data); n != 5 {
+				t.Errorf("s2c length of the new instance = %d, want 5 (diagnostics %v)", n, codes(s))
+			}
+			wantData(t, s, model.C2S, "second")
+			if s.Status == statusError {
+				t.Errorf("status = %s", s.Status)
+			}
+			if name == "random ISNs" && (len(ss[0].Packets) != 9 || ss[0].Packets[7].Number != 10) {
+				t.Errorf("late segments not returned to the first instance: %d packets", len(ss[0].Packets))
+			}
+		})
+	}
+}
+
+func TestTotalStreamBudget(t *testing.T) {
+	// Every session announces far more bytes than it carries: a crafted or
+	// badly damaged capture must not make the reassembly allocate them all.
+	var pkts []pk
+	for i := range 4 {
+		cp := netip.AddrPortFrom(client.Addr(), uint16(41000+i))
+		pkts = append(pkts,
+			C(S, ci, 0, "").ports(cp, server),
+			Sv(SA, si, c1, "").ports(server, cp),
+			C(PA, c1, s1, "head").ports(cp, server),
+			C(PA, c1+40, s1, "tail").ports(cp, server), // 36 bytes lost in between
+		)
+	}
+	ss := assemble(t, Options{MaxTotalBytes: 100}, pkts)
+	var lengths []int
+	for _, s := range ss {
+		lengths = append(lengths, len(s.Stream(model.C2S).Data))
+	}
+	if !slices.Equal(lengths, []int{44, 44, 12, 0}) {
+		t.Fatalf("lengths = %v", lengths)
+	}
+	for i, s := range ss {
+		cut := slices.Contains(codes(s), codeStreamTooLarge)
+		if cut != (i >= 2) || (cut && s.Status != statusError) {
+			t.Errorf("session %d: status %s diagnostics %v", i, s.Status, codes(s))
+		}
+	}
+	if d := diag(t, ss[2], codeStreamTooLarge); d.Message != "C→S: потоки записи вместе превышают предел 100 Б, байты этого потока после смещения 12 не сохранены" {
+		t.Errorf("message = %q", d.Message)
 	}
 }

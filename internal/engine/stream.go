@@ -17,6 +17,8 @@ type stream struct {
 	unknown []byte
 	gaps    []model.StreamGap
 	segs    segmentIndex
+	// unknownStart: offset 0 is not known to be a message boundary.
+	unknownStart bool
 
 	frames      []frame
 	frameIssues [][]string // referenced by frame.issues
@@ -29,11 +31,12 @@ func newStream(dir model.Direction, in StreamInput, own bool) *stream {
 		data = bytes.Clone(in.Bytes)
 	}
 	return &stream{
-		dir:     dir,
-		data:    data,
-		unknown: unknownMask(len(data), in.Gaps),
-		gaps:    in.Gaps,
-		segs:    newSegmentIndex(in.Segments),
+		dir:          dir,
+		data:         data,
+		unknown:      unknownMask(len(data), in.Gaps),
+		gaps:         in.Gaps,
+		segs:         newSegmentIndex(in.Segments),
+		unknownStart: in.UnknownStart,
 	}
 }
 

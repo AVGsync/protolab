@@ -610,7 +610,7 @@ func TestChecksumOffload(t *testing.T) {
 	wantNotes(t, s, 4, model.FlagChecksumWarning)
 	wantNotes(t, s, 5)
 	d := diag(t, s, codeChecksumOffload)
-	if d.Level != model.LevelInfo || d.Count != 5 ||
+	if d.Level != model.LevelInfo || d.Count != 5 || !slices.Equal(d.PacketNumbers, []int{1, 3, 4, 6, 8}) ||
 		d.Message != "Неверная контрольная сумма TCP — вероятно checksum offloading на узле захвата; данные используются" {
 		t.Errorf("diagnostic = %+v", d)
 	}

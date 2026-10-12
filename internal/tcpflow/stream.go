@@ -71,7 +71,8 @@ type half struct {
 	finOff   int64 // offset of the FIN's sequence number
 	ackHigh  int64 // highest offset acknowledged by the peer
 	length   int64
-	tooLarge bool
+	tooLarge bool // cut by a limit
+	overall  bool // the limit was the capture-wide one
 
 	// Placement state.
 	data      []byte
@@ -102,8 +103,9 @@ func (h *half) noteAck(ack uint32) {
 }
 
 // finishExtent fixes the stream length from data ends, the FIN and the peer's
-// acknowledgments, applying the size limit.
-func (h *half) finishExtent(limit int64) {
+// acknowledgments, applying the per-stream limit and what is left of the
+// capture-wide one.
+func (h *half) finishExtent(limit int64, left *int64) {
 	ackLen := h.ackHigh
 	if h.finSeen && ackLen > h.finOff {
 		ackLen-- // the FIN itself occupies one sequence number
@@ -115,6 +117,10 @@ func (h *half) finishExtent(limit int64) {
 	if n > limit {
 		n, h.tooLarge = limit, true
 	}
+	if n > *left {
+		n, h.tooLarge, h.overall = max(*left, 0), true, true
+	}
+	*left -= n
 	h.length = n
 	h.data = make([]byte, n)
 }
@@ -197,8 +203,10 @@ func (h *half) fill(out []span, from, to, off int64, payload []byte, pkt int, we
 func (h *half) compare(out []span, s span, from, to, off int64, payload []byte, pkt int, last, weak bool, p *placement) []span {
 	old := h.data[from:to]
 	cand := payload[from-off : to-off]
+	confirmed := s
+	confirmed.weak = s.weak && weak // an intact copy vouches for the same bytes
 	if bytes.Equal(old, cand) {
-		return appendSpan(out, s.copyTo(from, to))
+		return appendSpan(out, confirmed.copyTo(from, to))
 	}
 	p.conflict = true
 	replace := last
@@ -214,7 +222,7 @@ func (h *half) compare(out []span, s span, from, to, off int64, payload []byte, 
 		a, b := from+int64(k), from+int64(n)
 		switch {
 		case same:
-			out = appendSpan(out, s.copyTo(a, b))
+			out = appendSpan(out, confirmed.copyTo(a, b))
 		case replace:
 			copy(old[k:n], cand[k:n])
 			p.won = true
@@ -233,11 +241,11 @@ func (h *half) hasWeakBytes() bool {
 }
 
 // appendSpan appends s, merging it into the previous span when they touch and
-// have the same owner and rivals.
+// have the same owner, rivals and verification.
 func appendSpan(spans []span, s span) []span {
 	if n := len(spans); n > 0 {
 		prev := &spans[n-1]
-		if prev.end == s.start && prev.owner == s.owner && slices.Equal(prev.rivals, s.rivals) {
+		if prev.end == s.start && prev.owner == s.owner && prev.weak == s.weak && slices.Equal(prev.rivals, s.rivals) {
 			prev.end = s.end
 			return spans
 		}

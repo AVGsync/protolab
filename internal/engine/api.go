@@ -11,13 +11,18 @@ import (
 )
 
 // Version identifies the engine semantics; stored with every verification run.
-const Version = "protolab-engine/1.0"
+const Version = "protolab-engine/1.1" // 1.1: framing syncs first when the connection start was not captured
 
 // StreamInput is one reassembled direction.
 type StreamInput struct {
 	Bytes    []byte
 	Gaps     []model.StreamGap // unknown ranges; their bytes must never be interpreted
 	Segments []model.StreamSegment
+	// UnknownStart: the start of the connection was not captured
+	// (DirectedStream.StartKnown is false), so offset 0 is just the first
+	// byte seen, not a message boundary. Length-prefixed framing looks for
+	// the sync pattern first; with a delimiter the first message is partial.
+	UnknownStart bool
 }
 
 // SessionInput is everything needed to parse one session.
