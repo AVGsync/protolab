@@ -1,14 +1,15 @@
+import type { Tone } from '@/shared/ui';
 import type { HypothesisStatus } from './types';
 
 export const HYPOTHESIS_STATUS: Record<
   HypothesisStatus,
-  { label: string; tone: 'neutral' | 'info' | 'success' | 'danger'; description: string }
+  { label: string; tone: Tone; description: string }
 > = {
-  proposed: { label: 'предложена', tone: 'neutral', description: 'Есть наблюдение, проверка не начиналась' },
+  proposed: { label: 'предложена', tone: 'muted', description: 'Есть наблюдение, проверка не начиналась' },
   testing: { label: 'проверяется', tone: 'info', description: 'Собираются примеры и контрпримеры' },
   supported: {
     label: 'подтверждается',
-    tone: 'success',
+    tone: 'ok',
     description: 'Согласуется с корпусом; совпадение не является доказательством',
   },
   refuted: { label: 'опровергнута', tone: 'danger', description: 'Найден контрпример' },

@@ -1,10 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { Activity, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
-import { isJobActive, jobQueries, JobStatusBadge } from '@/entities/job';
+import { isJobActive, jobQueries, JobStatusMark } from '@/entities/job';
 import { CancelJobButton } from '@/features/cancel-job';
 import { cn, formatDateTime, formatPercent, useClickOutside } from '@/shared/lib';
-import { Progress, Spinner } from '@/shared/ui';
+import { Progress } from '@/shared/ui';
 import { useJobWatcher } from '../model/useJobWatcher';
 
 /** Long operations show progress, can be cancelled, and never block browsing ready data. */
@@ -16,45 +15,50 @@ export function JobsIndicator() {
 
   const jobs = data?.items ?? [];
   const active = jobs.filter(isJobActive);
+  const first = active[0];
 
   return (
     <div ref={ref} className="relative">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={cn(
-          'inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs',
-          active.length ? 'border-info/40 bg-info/10 text-info' : 'border-line text-muted hover:text-fg',
-        )}
+        aria-expanded={open}
+        className={cn('flex h-6 items-center gap-2 rounded-ctl px-1.5 hover:bg-surface-2', first ? 'text-fg' : 'text-muted hover:text-fg')}
       >
-        {active.length ? <Spinner size={13} /> : <Activity size={13} />}
-        {active.length ? `Задачи: ${active.length}` : 'Задачи'}
+        {first ? (
+          <>
+            <i aria-hidden className="size-[7px] animate-pulse bg-accent-2" />
+            <span className="max-w-56 truncate">{first.title}</span>
+            <span className="font-mono">{formatPercent(first.progress, 0)}</span>
+            {active.length > 1 && <span className="font-mono text-muted">+{active.length - 1}</span>}
+          </>
+        ) : (
+          'Задач нет'
+        )}
       </button>
       {open && (
-        <div className="absolute top-10 right-0 z-40 w-96 rounded-lg border border-line-strong bg-surface-2 shadow-2xl shadow-black/50">
-          <div className="border-b border-line px-3 py-2 text-xs font-semibold text-muted">Фоновые задачи</div>
+        <div className="absolute top-8 right-0 z-40 w-96 rounded-ctl border border-line-strong bg-surface text-fg shadow-pop">
+          <div className="border-b border-line px-3 py-1.5 text-xs text-muted">Фоновые задачи</div>
           {jobs.length === 0 ? (
-            <p className="flex items-center gap-2 px-3 py-6 text-xs text-muted">
-              <CheckCircle2 size={14} /> Задач нет
-            </p>
+            <p className="px-3 py-6 text-center text-xs text-muted">Задач нет</p>
           ) : (
             <ul className="max-h-96 divide-y divide-line overflow-y-auto">
               {jobs.map((job) => (
-                <li key={job.id} className="px-3 py-2.5">
+                <li key={job.id} className="px-3 py-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-[12.5px]">{job.title}</p>
-                      <p className="text-[11px] text-subtle">
-                        {isJobActive(job) ? `${job.stage ?? ''} · ${formatPercent(job.progress, 0)}` : formatDateTime(job.finishedAt ?? job.startedAt)}
+                      <p className="truncate text-[13px]">{job.title}</p>
+                      <p className="font-mono text-[11px] text-muted">
+                        {isJobActive(job) ? `${job.stage ?? ''} ${formatPercent(job.progress, 0)}` : formatDateTime(job.finishedAt ?? job.startedAt)}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2 text-xs">
                       <CancelJobButton job={job} />
-                      <JobStatusBadge status={job.status} />
+                      <JobStatusMark status={job.status} />
                     </div>
                   </div>
-                  {isJobActive(job) && <Progress value={job.progress} tone="info" className="mt-2" />}
-                  {job.error && <p className="mt-1 text-[11px] text-danger">{job.error}</p>}
+                  {isJobActive(job) && <Progress value={job.progress} className="mt-2" />}
+                  {job.error && <p className="mt-1 text-xs text-danger">{job.error}</p>}
                 </li>
               ))}
             </ul>

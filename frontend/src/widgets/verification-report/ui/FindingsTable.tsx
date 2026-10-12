@@ -1,5 +1,5 @@
 import { SourceRefLink } from '@/entities/observation';
-import { FindingKindBadge, type Finding } from '@/entities/verification';
+import { FindingKindMark, type Finding } from '@/entities/verification';
 import { formatNumber } from '@/shared/lib';
 import { EmptyState, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
@@ -27,7 +27,7 @@ export function FindingsTable({ projectId, findings, versionId }: FindingsTableP
         {findings.map((f) => (
           <Tr key={f.id} className="align-top">
             <Td>
-              <FindingKindBadge kind={f.kind} />
+              <FindingKindMark kind={f.kind} />
             </Td>
             <Td className="max-w-md">{f.message}</Td>
             <Td className="font-mono text-[11.5px] text-muted">

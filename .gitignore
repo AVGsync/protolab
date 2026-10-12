@@ -1,0 +1,11 @@
+# Go build output
+/bin/
+/dist/
+/protolab
+/protolab.exe
+# Frontend build embedded into the binary (only the placeholder is tracked)
+/internal/webui/dist/*
+!/internal/webui/dist/README.md
+
+# Local tooling downloads
+*.whl

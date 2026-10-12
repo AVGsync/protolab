@@ -1,11 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Layers } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { ACTION_KIND_LABEL, actionQueries } from '@/entities/action';
 import { captureQueries } from '@/entities/capture';
 import { corpusApi, type CorpusFilter } from '@/entities/corpus';
 import { projectKeys } from '@/entities/project';
-import { EndpointPair, SessionStatusBadge, sessionQueries } from '@/entities/session';
+import { EndpointPair, SessionStatusMark, sessionQueries } from '@/entities/session';
 import { formatTimestamp } from '@/shared/lib';
 import { Button, Checkbox, Field, Input, Modal, Table, TBody, Td, Th, THead, Tr, toast } from '@/shared/ui';
 
@@ -67,7 +66,7 @@ export function CreateCorpusButton({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <Button icon={<Layers size={14} />} onClick={() => setOpen(true)}>
+      <Button onClick={() => setOpen(true)}>
         Новый корпус
       </Button>
       <Modal
@@ -97,7 +96,7 @@ export function CreateCorpusButton({ projectId }: { projectId: string }) {
               <Input value={description} onChange={(e) => setDescription(e.target.value)} />
             </Field>
           </div>
-          <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-md border border-line bg-bg px-3 py-2.5">
+          <div className="flex flex-wrap gap-x-5 gap-y-2 border border-line bg-bg px-3 py-2.5">
             <span className="text-xs text-muted">Записи:</span>
             {captures.data?.items.map((c) => (
               <Checkbox key={c.id} label={c.fileName} checked={captureIds.includes(c.id)} onChange={() => toggleCapture(c.id)} />
@@ -106,7 +105,7 @@ export function CreateCorpusButton({ projectId }: { projectId: string }) {
             <Checkbox label="только целевой порт" checked={onlyTarget} onChange={(e) => setOnlyTarget(e.target.checked)} />
             <Checkbox label="только полные сессии" checked={onlyComplete} onChange={(e) => setOnlyComplete(e.target.checked)} />
           </div>
-          <div className="max-h-80 overflow-y-auto rounded-md border border-line">
+          <div className="max-h-80 overflow-y-auto border border-line">
             <Table>
               <THead>
                 <tr>
@@ -136,7 +135,7 @@ export function CreateCorpusButton({ projectId }: { projectId: string }) {
                     <Td className="font-mono text-[12px] text-muted">{formatTimestamp(s.startedAt, 3)}</Td>
                     <Td className="text-muted">{actionLabel.get(s.id) ?? '—'}</Td>
                     <Td>
-                      <SessionStatusBadge status={s.status} />
+                      <SessionStatusMark status={s.status} />
                     </Td>
                   </Tr>
                 ))}

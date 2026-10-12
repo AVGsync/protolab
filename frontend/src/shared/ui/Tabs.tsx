@@ -1,11 +1,20 @@
 import type { ReactNode } from 'react';
+import { NavLink } from 'react-router';
 import { cn } from '../lib/cn';
 
 export interface TabItem<T extends string> {
   id: T;
   label: ReactNode;
-  badge?: ReactNode;
-  icon?: ReactNode;
+  /** Quiet count after the label. */
+  count?: ReactNode;
+}
+
+const tabBase = '-mb-px inline-flex h-8 items-center gap-1.5 border-b-2 px-2.5 text-[13px] whitespace-nowrap transition-colors';
+const tabClass = (active: boolean) =>
+  cn(tabBase, active ? 'border-fg font-medium text-fg' : 'border-transparent text-muted hover:text-fg');
+
+function Count({ children }: { children: ReactNode }) {
+  return <span className="font-mono text-[11px] font-normal text-muted">{children}</span>;
 }
 
 export interface TabsProps<T extends string> {
@@ -15,31 +24,45 @@ export interface TabsProps<T extends string> {
   className?: string;
 }
 
+/** In-page tabs (state). For tabs that change the URL use TabNav. */
 export function Tabs<T extends string>({ items, value, onChange, className }: TabsProps<T>) {
   return (
     <div role="tablist" className={cn('flex items-center gap-1 border-b border-line px-2', className)}>
-      {items.map((item) => {
-        const active = item.id === value;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => onChange(item.id)}
-            className={cn(
-              '-mb-px inline-flex h-9 items-center gap-1.5 border-b-2 px-2.5 text-[12.5px] font-medium transition-colors',
-              active ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg',
-            )}
-          >
-            {item.icon}
-            {item.label}
-            {item.badge !== undefined && (
-              <span className="rounded bg-surface-3 px-1.5 text-[10.5px] text-muted">{item.badge}</span>
-            )}
-          </button>
-        );
-      })}
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="tab"
+          aria-selected={item.id === value}
+          onClick={() => onChange(item.id)}
+          className={tabClass(item.id === value)}
+        >
+          {item.label}
+          {item.count !== undefined && <Count>{item.count}</Count>}
+        </button>
+      ))}
     </div>
+  );
+}
+
+export interface TabNavItem {
+  to: string;
+  label: ReactNode;
+  count?: ReactNode;
+  /** Match the path exactly (for an index tab). */
+  end?: boolean;
+}
+
+/** Tabs that are routes (sub-sections of a project section). */
+export function TabNav({ items, className }: { items: readonly TabNavItem[]; className?: string }) {
+  return (
+    <nav className={cn('flex items-center gap-1 border-b border-line px-2', className)}>
+      {items.map((item) => (
+        <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => tabClass(isActive)}>
+          {item.label}
+          {item.count !== undefined && <Count>{item.count}</Count>}
+        </NavLink>
+      ))}
+    </nav>
   );
 }

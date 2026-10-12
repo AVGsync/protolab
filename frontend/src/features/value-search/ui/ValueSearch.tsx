@@ -1,4 +1,3 @@
-import { Search } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import {
   cn,
@@ -64,13 +63,13 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
   return (
     <div className="flex flex-col gap-3">
       <form onSubmit={search} className="flex flex-col gap-2.5">
-        <div className="flex gap-1 rounded-md border border-line bg-bg p-0.5 text-xs">
+        <div className="flex gap-1 rounded-ctl border border-line-strong bg-bg p-0.5 text-xs">
           {(['number', 'hex'] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setMode(m)}
-              className={cn('flex-1 rounded px-2 py-1', mode === m ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg')}
+              className={cn('flex-1 px-2 py-1', mode === m ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg')}
             >
               {m === 'number' ? 'Число' : 'Байты (hex)'}
             </button>
@@ -87,7 +86,7 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
             <select
               value={scale}
               onChange={(e) => setScale(Number(e.target.value))}
-              className="h-8 rounded-md border border-line bg-bg px-1.5 text-xs"
+              className="h-7 rounded-ctl border border-line-strong bg-bg px-1.5 text-xs"
               title="Масштаб: значение × k"
             >
               {[1, 10, 100].map((k) => (
@@ -97,7 +96,7 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
               ))}
             </select>
           )}
-          <Button type="submit" variant="primary" icon={<Search size={13} />}>
+          <Button type="submit" variant="primary">
             Найти
           </Button>
         </div>
@@ -109,8 +108,8 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
                 type="button"
                 onClick={() => toggle(enc)}
                 className={cn(
-                  'rounded border px-1.5 py-0.5 font-mono text-[10.5px]',
-                  encodings.includes(enc) ? 'border-accent/50 bg-accent/15 text-fg' : 'border-line text-subtle',
+                  'border px-1.5 py-0.5 font-mono text-[10.5px]',
+                  encodings.includes(enc) ? 'border-fg bg-surface-2 text-fg' : 'border-line text-subtle',
                 )}
               >
                 {enc}
@@ -133,10 +132,10 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
                 <button
                   type="button"
                   onClick={() => onSelect(h)}
-                  className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-surface-2"
+                  className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-surface-2"
                 >
                   <span className="font-mono text-[11.5px] text-info">{formatOffset(h.offset)}</span>
-                  <span className="font-mono text-[11.5px] text-glow">{toHex(bytes.subarray(h.offset, h.offset + h.length))}</span>
+                  <span className="font-mono text-[11.5px] text-fg">{toHex(bytes.subarray(h.offset, h.offset + h.length))}</span>
                   <span className="ml-auto font-mono text-[10.5px] text-subtle">{h.encodings.join(' ')}</span>
                 </button>
               </li>

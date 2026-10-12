@@ -1,13 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { FlaskConical } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { corpusQueries, describeCorpusFilter } from '@/entities/corpus';
-import { RunStatusBadge, StaleBadge, verificationQueries } from '@/entities/verification';
+import { RunStatusMark, StaleTag, verificationQueries } from '@/entities/verification';
 import { CreateCorpusButton } from '@/features/create-corpus';
 import { StartRunButton } from '@/features/run-verification';
 import { routes } from '@/shared/config';
 import { formatDateTime, formatDuration, shortHash, useRequiredParams } from '@/shared/lib';
-import { Badge, Card, CardHeader, EmptyState, ErrorState, Loader, Page, PageHeader, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
+import { EmptyState, ErrorState, Loader, Page, PageHeader, Pane, PaneHeader, Table, Tag, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
 export function VerificationPage() {
   const { projectId } = useRequiredParams('projectId');
@@ -31,15 +30,15 @@ export function VerificationPage() {
         }
       />
 
-      <Card className="mb-5">
-        <CardHeader title="Корпуса" description="Зафиксированные наборы сессий; хеш меняется при изменении состава" />
+      <Pane className="mb-5">
+        <PaneHeader title="Корпуса" />
         {corpora.isLoading && <Loader />}
         <div className="grid gap-3 p-4 md:grid-cols-3">
           {corpora.data?.items.map((c) => (
-            <div key={c.id} className="rounded-md border border-line bg-bg px-3 py-2.5">
+            <div key={c.id} className="border border-line bg-bg px-3 py-2.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium">{c.name}</p>
-                <Badge>{c.sessionIds.length} сес.</Badge>
+                <Tag>{c.sessionIds.length} сес.</Tag>
               </div>
               <p className="mt-0.5 text-[12px] text-muted">{c.description}</p>
               <p className="mt-1.5 text-[11px] text-subtle">{describeCorpusFilter(c.filter).join(' · ')}</p>
@@ -48,13 +47,13 @@ export function VerificationPage() {
           ))}
           {corpora.data?.items.length === 0 && <p className="text-xs text-muted">Создайте корпус для проверки.</p>}
         </div>
-      </Card>
+      </Pane>
 
-      <Card>
-        <CardHeader title="Проверки" />
+      <Pane>
+        <PaneHeader title="Проверки" />
         {runs.isLoading && <Loader />}
         {runs.error && <ErrorState error={runs.error} onRetry={runs.refetch} />}
-        {runs.data && runs.data.items.length === 0 && <EmptyState icon={<FlaskConical size={20} />} title="Проверок ещё не было" />}
+        {runs.data && runs.data.items.length === 0 && <EmptyState title="Проверок ещё не было" />}
         {runs.data && runs.data.items.length > 0 && (
           <Table>
             <THead>
@@ -76,18 +75,18 @@ export function VerificationPage() {
                 <Tr key={r.id} onClick={() => navigate(routes.run(projectId, r.id))}>
                   <Td className="font-mono text-[12px]">{r.id}</Td>
                   <Td>
-                    {r.interpretationName} <span className="rounded bg-surface-3 px-1 font-mono text-[11px]">v{r.version}</span>
+                    {r.interpretationName} <Tag>v{r.version}</Tag>
                   </Td>
                   <Td className="text-[12.5px]">{r.corpusName}</Td>
                   <Td className="text-right font-mono">{r.summary?.messages ?? '—'}</Td>
-                  <Td className="text-right font-mono text-success">{r.summary?.ok ?? ''}</Td>
+                  <Td className="text-right font-mono text-ok">{r.summary?.ok ?? ''}</Td>
                   <Td className="text-right font-mono text-danger">{r.summary?.violations || ''}</Td>
-                  <Td className="text-right font-mono text-warning">{r.summary?.partial || ''}</Td>
+                  <Td className="text-right font-mono text-warn">{r.summary?.partial || ''}</Td>
                   <Td className="text-right font-mono text-muted">{r.summary?.unknownType || ''}</Td>
                   <Td>
                     <span className="flex flex-wrap gap-1">
-                      <RunStatusBadge status={r.status} />
-                      {r.stale && <StaleBadge reasons={r.staleReasons} />}
+                      <RunStatusMark status={r.status} />
+                      {r.stale && <StaleTag reasons={r.staleReasons} />}
                     </span>
                   </Td>
                   <Td className="text-[12px] whitespace-nowrap text-muted">
@@ -99,7 +98,7 @@ export function VerificationPage() {
             </TBody>
           </Table>
         )}
-      </Card>
+      </Pane>
     </Page>
   );
 }

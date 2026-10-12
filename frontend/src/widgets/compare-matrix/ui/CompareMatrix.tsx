@@ -19,8 +19,8 @@ export interface CompareMatrixProps {
 
 const KIND_CLASS = {
   constant: 'text-subtle',
-  variable: 'text-glow',
-  partial: 'text-violet',
+  variable: 'text-fg',
+  partial: 'text-info',
 };
 
 /**
@@ -30,7 +30,7 @@ const KIND_CLASS = {
 export function CompareMatrix({ rows, stats, highlight, paramLabel = 'параметр' }: CompareMatrixProps) {
   const inHighlight = (o: number) => highlight && o >= highlight.offset && o < highlight.offset + highlight.length;
   return (
-    <div className="overflow-auto rounded-lg border border-line bg-bg">
+    <div className="overflow-auto border border-line bg-bg">
       <table className="border-collapse font-mono text-[12px]">
         <thead className="sticky top-0 z-10 bg-surface-2">
           <tr>
@@ -47,7 +47,7 @@ export function CompareMatrix({ rows, stats, highlight, paramLabel = 'парам
                 className={cn(
                   'w-[26px] border-b border-line px-0 py-1.5 text-center text-[10.5px] font-normal',
                   KIND_CLASS[s.kind],
-                  inHighlight(s.offset) && 'bg-accent/25 text-white',
+                  inHighlight(s.offset) && 'bg-selection text-fg',
                 )}
               >
                 {s.offset}
@@ -60,7 +60,7 @@ export function CompareMatrix({ rows, stats, highlight, paramLabel = 'парам
             <tr key={r.key} className="border-b border-line/60 hover:bg-surface/60">
               <td className="sticky left-0 z-[5] border-r border-line bg-bg px-3 py-1 font-sans">
                 {r.href ? (
-                  <Link to={r.href} className="text-[12.5px] hover:text-info hover:underline">
+                  <Link to={r.href} className="text-[12.5px] hover:link">
                     {r.label}
                   </Link>
                 ) : (
@@ -68,7 +68,7 @@ export function CompareMatrix({ rows, stats, highlight, paramLabel = 'парам
                 )}
                 {r.sublabel && <div className="font-mono text-[10.5px] text-subtle">{r.sublabel}</div>}
               </td>
-              <td className="border-r border-line px-2 text-right text-glow">{r.param ?? <span className="text-subtle">—</span>}</td>
+              <td className="border-r border-line px-2 text-right text-fg">{r.param ?? <span className="text-subtle">—</span>}</td>
               {stats.map((s) => {
                 const present = s.offset < r.bytes.length;
                 return (
@@ -77,7 +77,7 @@ export function CompareMatrix({ rows, stats, highlight, paramLabel = 'парам
                     className={cn(
                       'px-0 text-center',
                       present ? (s.kind === 'variable' ? 'text-fg' : 'text-subtle') : 'text-line-strong',
-                      inHighlight(s.offset) && 'bg-accent/25 text-white',
+                      inHighlight(s.offset) && 'bg-selection text-fg',
                     )}
                   >
                     {present ? hexByte(r.bytes[s.offset]) : '··'}

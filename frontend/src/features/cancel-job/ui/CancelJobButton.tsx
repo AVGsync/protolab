@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X } from 'lucide-react';
 import { jobApi, jobKeys, type Job } from '@/entities/job';
 import { Button, toast } from '@/shared/ui';
 
@@ -15,7 +14,7 @@ export function CancelJobButton({ job }: { job: Job }) {
   });
   if (!job.cancellable) return null;
   return (
-    <Button size="xs" variant="ghost" icon={<X size={12} />} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+    <Button size="xs" variant="ghost" loading={mutation.isPending} onClick={() => mutation.mutate()}>
       Отменить
     </Button>
   );

@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CaretDownIcon, CaretRightIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
-import { MeaningBadge, type Message, type ParsedField } from '@/entities/message';
+import { MeaningMark, type Message, type ParsedField } from '@/entities/message';
 import { cn } from '@/shared/lib';
 import { fieldColor } from '../model/palette';
 
@@ -15,7 +15,7 @@ export function FieldTable({ message, onSelectRange }: FieldTableProps) {
   return (
     <div className="flex flex-col gap-2">
       {message.issues.length > 0 && (
-        <ul className="rounded-md border border-warning/30 bg-warning/8 px-3 py-2 text-[12px] text-warning">
+        <ul className="px-3 py-2 text-xs text-warn">
           {message.issues.map((i) => (
             <li key={i}>{i}</li>
           ))}
@@ -23,11 +23,11 @@ export function FieldTable({ message, onSelectRange }: FieldTableProps) {
       )}
       <table className="w-full text-[12px]">
         <thead>
-          <tr className="text-left text-[10.5px] tracking-wide text-subtle uppercase">
-            <th className="py-1 pr-2 pl-1 font-semibold">Поле</th>
-            <th className="py-1 pr-2 font-semibold">@ · тип</th>
-            <th className="py-1 pr-2 font-semibold">Значение</th>
-            <th className="py-1 font-semibold">Смысл</th>
+          <tr className="text-left text-xs text-muted">
+            <th className="py-1 pr-2 pl-1 font-normal">Поле</th>
+            <th className="py-1 pr-2 font-normal">@ · тип</th>
+            <th className="py-1 pr-2 font-normal">Значение</th>
+            <th className="py-1 font-normal">Смысл</th>
           </tr>
         </thead>
         <tbody>
@@ -85,10 +85,10 @@ function FieldRow({
                 }}
                 className="text-subtle hover:text-fg"
               >
-                {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                {open ? <CaretDownIcon size={12} /> : <CaretRightIcon size={12} />}
               </button>
             ) : (
-              color && <span className="size-2 rounded-sm" style={{ background: color }} />
+              color && <span className="size-2 " style={{ background: color }} />
             )}
             <span className="font-mono">{field.name}</span>
           </span>
@@ -97,14 +97,14 @@ function FieldRow({
           {field.offset} · {field.type}
         </td>
         <td className="py-1 pr-2">
-          <span className={cn('font-mono', field.status === 'violation' ? 'text-danger' : field.status === 'unknown' ? 'text-warning' : 'text-fg')}>
+          <span className={cn('font-mono', field.status === 'violation' ? 'text-danger' : field.status === 'unknown' ? 'text-warn' : 'text-fg')}>
             {field.display}
           </span>
           {field.issue && <div className="text-[11px] text-danger">{field.issue}</div>}
         </td>
         <td className="py-1">
           {field.meaning && <div className="text-muted">{field.meaning}</div>}
-          {field.meaningStatus && field.type !== 'struct' && <MeaningBadge status={field.meaningStatus} />}
+          {field.meaningStatus && field.type !== 'struct' && <MeaningMark status={field.meaningStatus} />}
         </td>
       </tr>
       {open &&

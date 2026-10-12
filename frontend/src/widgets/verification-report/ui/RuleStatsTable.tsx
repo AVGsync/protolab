@@ -1,5 +1,5 @@
 import type { RunSummary } from '@/entities/verification';
-import { Badge, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
+import { Status, Table, Tag, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
 export function RuleStatsTable({ summary }: { summary: RunSummary }) {
   return (
@@ -15,12 +15,12 @@ export function RuleStatsTable({ summary }: { summary: RunSummary }) {
       <TBody>
         {summary.byRule.map((r) => (
           <Tr key={r.ruleId}>
-            <Td className="font-mono text-[12px]">{r.ruleId}</Td>
+            <Td className="font-mono text-xs">{r.ruleId}</Td>
             <Td className="text-right font-mono">{r.matched}</Td>
             <Td className="text-right font-mono">{r.violations || ''}</Td>
             <Td>
-              {r.matched === 0 && <Badge tone="info">не применялось</Badge>}
-              {r.violations > 0 && <Badge tone="danger">есть контрпримеры</Badge>}
+              {r.matched === 0 && <Tag>не применялось</Tag>}
+              {r.violations > 0 && <Status tone="danger">есть контрпримеры</Status>}
             </Td>
           </Tr>
         ))}

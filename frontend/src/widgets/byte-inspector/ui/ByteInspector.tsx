@@ -1,10 +1,9 @@
-import { AlertTriangle, MousePointerClick } from 'lucide-react';
 import type { TcpSession } from '@/entities/session';
 import type { StreamSegment } from '@/entities/stream';
 import { CreateObservationButton } from '@/features/create-observation';
 import type { Direction, SourceRef } from '@/shared/api';
 import { decodeAt, formatRange, maskHasAny, rangeEnd, toAscii, toHexMasked, type ByteRange } from '@/shared/lib';
-import { Callout, CopyButton, EmptyState, KeyValue, Mono, SectionTitle } from '@/shared/ui';
+import { Note, CopyButton, EmptyState, KeyValue, Mono, SectionTitle } from '@/shared/ui';
 
 export interface ByteInspectorProps {
   projectId: string;
@@ -23,7 +22,6 @@ export function ByteInspector({ projectId, session, direction, bytes, unknownMas
   if (!selection) {
     return (
       <EmptyState
-        icon={<MousePointerClick size={20} />}
         title="Выделите байты"
         description="Значения выделения будут показаны в разных кодировках вместе с пакетами-источниками."
       />
@@ -62,14 +60,14 @@ export function ByteInspector({ projectId, session, direction, bytes, unknownMas
       </div>
 
       {hasUnknown && (
-        <Callout tone="warning" icon={<AlertTriangle size={14} />} title="В выделении есть неизвестные байты">
+        <Note tone="warn" title="В выделении есть неизвестные байты">
           Эти байты не захвачены — значения ниже не вычисляются.
-        </Callout>
+        </Note>
       )}
 
       <div>
         <SectionTitle actions={<CopyButton value={toHexMasked(slice, sliceMask)} label="hex" />}>Байты</SectionTitle>
-        <p className="font-mono text-[12px] break-all text-glow">
+        <p className="font-mono text-[12px] break-all text-fg">
           {hex}
           {slice.length > PREVIEW_LIMIT && <span className="text-subtle"> … ещё {slice.length - PREVIEW_LIMIT} Б</span>}
         </p>

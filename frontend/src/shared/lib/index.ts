@@ -6,3 +6,4 @@ export * from './format';
 export { useClickOutside, useDebouncedValue } from './hooks';
 export * from './ranges';
 export { useRequiredParams } from './router';
+export { useTheme } from './theme';

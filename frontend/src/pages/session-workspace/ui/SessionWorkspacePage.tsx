@@ -1,21 +1,22 @@
+import { ArrowLeftIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Binary, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { DiagnosticList } from '@/entities/capture';
 import { interpretationQueries } from '@/entities/interpretation';
 import { messageQueries, type Message } from '@/entities/message';
-import { DIRECTION_LABEL, EndpointPair, SessionFlagBadges, SessionStatusBadge, sessionQueries } from '@/entities/session';
+import { DIRECTION_LABEL, EndpointPair, SessionAnomalyMark, SessionStatusMark, sessionQueries } from '@/entities/session';
 import { streamQueries, type Packet } from '@/entities/stream';
 import { ValueSearch } from '@/features/value-search';
 import { ByteInspector } from '@/widgets/byte-inspector';
 import { HexViewer, type HexHighlight } from '@/widgets/hex-viewer';
 import { FieldTable, fieldColor, MessageList } from '@/widgets/message-panel';
 import { PacketTable } from '@/widgets/packet-table';
+import { useContextKeys } from '@/widgets/soft-keys';
 import type { Direction } from '@/shared/api';
 import { routes } from '@/shared/config';
 import { buildMask, cn, parseRange, serializeRange, useRequiredParams, type ByteRange } from '@/shared/lib';
-import { Badge, Callout, EmptyState, ErrorState, Loader, Select, Tabs } from '@/shared/ui';
+import { EmptyState, ErrorState, Loader, Note, Select, Status, Tabs } from '@/shared/ui';
 
 type PanelTab = 'inspector' | 'messages' | 'packets' | 'search';
 
@@ -24,6 +25,7 @@ const NO_VERSION = 'none';
 export function SessionWorkspacePage() {
   const { projectId, sessionId } = useRequiredParams('projectId', 'sessionId');
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const dir: Direction = params.get('dir') === 's2c' ? 's2c' : 'c2s';
   const selection = parseRange(params.get('sel'));
 
@@ -100,6 +102,17 @@ export function SessionWorkspacePage() {
     setTab('inspector');
   };
 
+  useContextKeys([
+    { key: '/', label: 'поиск', description: 'Поиск значения в потоке', onPress: () => setTab('search') },
+    {
+      key: 'D',
+      label: 'направление',
+      description: 'Переключить направление потока',
+      onPress: () => select(null, { dir: dir === 'c2s' ? 's2c' : 'c2s' }),
+    },
+    { key: 'C', label: 'сравнить', description: 'Сравнение примеров', onPress: () => navigate(routes.compare(projectId)) },
+  ]);
+
   if (session.isLoading) return <Loader />;
   if (session.error || !session.data) return <ErrorState error={session.error} onRetry={session.refetch} />;
   const s = session.data;
@@ -109,21 +122,21 @@ export function SessionWorkspacePage() {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
         <Link to={routes.sessions(projectId)} className="text-muted hover:text-fg" title="К списку сессий">
-          <ArrowLeft size={16} />
+          <ArrowLeftIcon size={16} />
         </Link>
         <span className="font-mono text-[13px] font-semibold">{s.id}</span>
         <EndpointPair client={s.client} server={s.server} />
-        <SessionStatusBadge status={s.status} />
-        <SessionFlagBadges flags={s.flags} roles={s.roles} />
+        <SessionStatusMark status={s.status} />
+        <SessionAnomalyMark flags={s.flags} roles={s.roles} />
 
         <div className="ml-auto flex items-center gap-2">
-          <div className="flex rounded-md border border-line bg-bg p-0.5 text-xs">
+          <div className="flex border border-line bg-bg p-0.5 text-xs">
             {(['c2s', 's2c'] as const).map((d) => (
               <button
                 key={d}
                 type="button"
                 onClick={() => select(null, { dir: d })}
-                className={cn('rounded px-2.5 py-1', dir === d ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg')}
+                className={cn('px-2.5 py-1', dir === d ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg')}
               >
                 {DIRECTION_LABEL[d]}
                 <span className="ml-1.5 font-mono text-[10.5px] text-subtle">{s.bytes[d]} Б</span>
@@ -153,15 +166,15 @@ export function SessionWorkspacePage() {
       </div>
 
       {s.diagnostics.length > 0 && (
-        <Callout tone="warning" className="mx-4 mt-3" title="Неполные или неоднозначные данные">
+        <Note tone="warn" className="mx-4 mt-3" title="Неполные или неоднозначные данные">
           <DiagnosticList items={s.diagnostics} className="mt-1" />
-        </Callout>
+        </Note>
       )}
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           {meta.data && !meta.data.startKnown && (
-            <p className="border-b border-line bg-warning/8 px-4 py-1.5 text-xs text-warning">
+            <p className="border-b border-line px-4 py-1.5 text-xs text-warn">
               Начало потока не захвачено: смещение 0 соответствует первому полученному байту, а не началу соединения.
             </p>
           )}
@@ -186,10 +199,10 @@ export function SessionWorkspacePage() {
             />
           )}
           <div className="flex flex-wrap items-center gap-3 border-t border-line bg-surface px-4 py-1.5 text-[11px] text-muted">
-            <Legend className="bg-white/[0.06]" label="чередование TCP-сегментов" />
-            <Legend className="shadow-[inset_2px_0_0_var(--color-glow)]" label="начало сообщения" />
+            <Legend className="bg-surface-2" label="чередование TCP-сегментов" />
+            <Legend className="shadow-[inset_2px_0_0_var(--color-line-strong)]" label="начало сообщения" />
             <Legend className="bg-hatch" label="неизвестные байты" />
-            <Legend className="bg-accent/50" label="выделение" />
+            <Legend className="bg-selection" label="выделение" />
           </div>
         </div>
 
@@ -198,10 +211,10 @@ export function SessionWorkspacePage() {
             value={tab}
             onChange={setTab}
             items={[
-              { id: 'inspector', label: 'Инспектор', icon: <Binary size={13} /> },
-              { id: 'messages', label: 'Сообщения', badge: hasVersion ? allMessages.length : undefined },
-              { id: 'packets', label: 'Пакеты', badge: packets.data?.total },
-              { id: 'search', label: 'Поиск', icon: <Search size={13} />, badge: hits.length || undefined },
+              { id: 'inspector', label: 'Инспектор' },
+              { id: 'messages', label: 'Сообщения', count: hasVersion ? allMessages.length : undefined },
+              { id: 'packets', label: 'Пакеты', count: packets.data?.total },
+              { id: 'search', label: 'Поиск', count: hits.length || undefined },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -223,7 +236,7 @@ export function SessionWorkspacePage() {
                   title="Сообщения не выделены"
                   description="Граница TCP-пакета не определяет границу сообщения. Выберите интерпретацию, чтобы применить правила кадрирования."
                   action={
-                    <Link to={routes.interpretations(projectId)} className="text-xs text-info hover:underline">
+                    <Link to={routes.spec(projectId)} className="text-xs link">
                       К интерпретациям
                     </Link>
                   }
@@ -236,9 +249,9 @@ export function SessionWorkspacePage() {
                 <div className="flex flex-col">
                   <div className="flex flex-wrap gap-1.5 border-b border-line px-3 py-2">
                     {Object.entries(counts).map(([status, n]) => (
-                      <Badge key={status} tone={status === 'ok' ? 'success' : status === 'violation' ? 'danger' : 'warning'}>
+                      <Status key={status} tone={status === 'ok' ? 'ok' : status === 'violation' ? 'danger' : 'warn'} className="text-xs">
                         {status}: {n}
-                      </Badge>
+                      </Status>
                     ))}
                     {version.data && <span className="ml-auto font-mono text-[11px] text-subtle">v{version.data.version}</span>}
                   </div>
@@ -279,7 +292,7 @@ export function SessionWorkspacePage() {
 function Legend({ className, label }: { className: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={cn('inline-block h-3 w-4 rounded-sm border border-line', className)} />
+      <span className={cn('inline-block h-3 w-4 border border-line', className)} />
       {label}
     </span>
   );

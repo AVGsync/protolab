@@ -1,0 +1,56 @@
+// Package engine applies an interpretation spec to reassembled streams:
+// framing, rule matching, field parsing, assertions against the action log,
+// and corpus-wide verification.
+package engine
+
+import (
+	"context"
+
+	"github.com/AVGsync/protolab/internal/model"
+	"github.com/AVGsync/protolab/internal/spec"
+)
+
+// Version identifies the engine semantics; stored with every verification run.
+const Version = "protolab-engine/1.0"
+
+// StreamInput is one reassembled direction.
+type StreamInput struct {
+	Bytes    []byte
+	Gaps     []model.StreamGap // unknown ranges; their bytes must never be interpreted
+	Segments []model.StreamSegment
+}
+
+// SessionInput is everything needed to parse one session.
+type SessionInput struct {
+	Session model.TcpSession
+	Streams [2]StreamInput      // [0] c2s, [1] s2c
+	Actions []model.ActionEntry // actions linked to the session (experiment conditions)
+}
+
+// Unframed is a range of a stream that does not belong to any message
+// (lost synchronisation, missing connection start, garbage).
+type Unframed struct {
+	Direction model.Direction
+	Offset    int
+	Length    int
+}
+
+type ParsedSession struct {
+	Messages []model.Message // both directions, ordered by time; Index assigned
+	Unframed []Unframed
+}
+
+// ParseSession frames and parses both directions of a session.
+func ParseSession(s *spec.Spec, in SessionInput) ParsedSession { return parseSession(s, in) }
+
+// Result of a verification run. Finding.ID and Finding.RunID are left empty.
+type Result struct {
+	Summary  model.RunSummary
+	Findings []model.Finding
+}
+
+// Verify applies the spec to every session of a corpus. progress may be nil.
+// It returns ctx.Err() if cancelled.
+func Verify(ctx context.Context, s *spec.Spec, inputs []SessionInput, progress func(done, total int)) (Result, error) {
+	return verify(ctx, s, inputs, progress)
+}

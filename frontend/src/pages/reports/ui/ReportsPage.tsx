@@ -1,12 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
-import { Download, FileJson, FileText, PackageCheck } from 'lucide-react';
+import { projectQueries } from '@/entities/project';
 import { reportQueries, type ArtifactKind } from '@/entities/report';
 import { ExportProjectButton } from '@/features/export-project';
 import { GenerateReportButton } from '@/features/generate-report';
+import { ProjectSettingsButton } from '@/features/project-settings';
 import { formatBytes, formatDateTime, shortHash, useRequiredParams } from '@/shared/lib';
-import { Badge, Card, CardBody, CardHeader, CopyButton, DownloadButton, EmptyState, ErrorState, Loader, Page, PageHeader } from '@/shared/ui';
-
-const STATUS_LABEL = { pending: 'формируется', ready: 'готов', failed: 'ошибка' } as const;
+import {
+  CopyButton,
+  DownloadButton,
+  EmptyState,
+  ErrorState,
+  Loader,
+  Note,
+  Page,
+  PageHeader,
+  Pane,
+  PaneHeader,
+  Readout,
+  Status,
+} from '@/shared/ui';
 
 const ARTIFACT_LABEL: Record<ArtifactKind, string> = {
   report_html: 'Отчёт (HTML)',
@@ -18,13 +30,14 @@ const ARTIFACT_LABEL: Record<ArtifactKind, string> = {
 
 export function ReportsPage() {
   const { projectId } = useRequiredParams('projectId');
+  const project = useQuery(projectQueries.detail(projectId));
   const { data, isLoading, error, refetch } = useQuery(reportQueries.list(projectId));
+  const settings = project.data?.settings;
 
   return (
     <Page>
       <PageHeader
-        title="Отчёты и передача"
-        description="Отчёт содержит основания выводов, проверенные примеры, область применимости, контрпримеры и открытые вопросы. Интерпретация применяется к новым данным без повторной ручной работы."
+        title="Отчёт"
         actions={
           <>
             <ExportProjectButton projectId={projectId} />
@@ -33,59 +46,71 @@ export function ReportsPage() {
         }
       />
 
-      <Card className="mb-5">
-        <CardHeader icon={<PackageCheck size={16} />} title="Перенос проекта" />
-        <CardBody className="grid gap-3 text-[12.5px] text-muted md:grid-cols-3">
-          <p>Архив проекта содержит исходные записи, интерпретации, наблюдения, связи с источниками и результаты проверок.</p>
-          <p>Пути внутри проекта относительные: проект открывается в другом каталоге или на другой машине без обращения к прежним путям.</p>
-          <p>При открытии SHA-256 записей сверяются; устаревшие результаты помечаются, а не выдаются за актуальные.</p>
-        </CardBody>
-      </Card>
+      <Note tone="info" className="mb-4">
+        Архив проекта содержит записи, интерпретации, наблюдения и проверки; пути относительные. При открытии SHA-256 записей
+        сверяются, устаревшие результаты помечаются.
+      </Note>
+
+      {project.data && settings && (
+        <div className="mb-4 flex items-center justify-between gap-4 border-y border-line py-2">
+          <Readout
+            items={[
+              { label: 'перекрытия', value: settings.overlapPolicy === 'first' ? 'первый пакет' : 'последний пакет' },
+              { label: 'checksum TCP', value: settings.checksumPolicy === 'warn' ? 'предупреждать' : 'игнорировать' },
+              { label: 'порты', value: settings.targetPorts.join(', ') || '—' },
+            ]}
+          />
+          <ProjectSettingsButton project={project.data} />
+        </div>
+      )}
 
       {isLoading && <Loader />}
       {error && <ErrorState error={error} onRetry={refetch} />}
-      {data && data.items.length === 0 && <EmptyState icon={<FileText size={20} />} title="Отчётов ещё нет" />}
+      {data && data.items.length === 0 && <EmptyState title="Отчётов ещё нет" />}
       <div className="flex flex-col gap-4">
         {data?.items.map((r) => (
-          <Card key={r.id}>
-            <CardHeader
+          <Pane key={r.id}>
+            <PaneHeader
               title={r.title}
-              description={`${r.interpretationName} v${r.version} · проверки: ${r.runIds.join(', ') || '—'} · ${formatDateTime(r.createdAt)}`}
-              actions={<Badge tone={r.status === 'ready' ? 'success' : r.status === 'failed' ? 'danger' : 'info'}>{STATUS_LABEL[r.status]}</Badge>}
+              actions={
+                <>
+                  <span className="font-mono text-xs text-muted">
+                    {r.interpretationName} v{r.version}, {formatDateTime(r.createdAt)}
+                  </span>
+                  {r.status === 'pending' && <Status tone="info">формируется</Status>}
+                  {r.status === 'failed' && <Status tone="danger">ошибка</Status>}
+                </>
+              }
             />
             {r.status === 'ready' && (
-              <CardBody className="flex flex-col gap-4">
-                <div className="grid gap-2 md:grid-cols-2">
+              <div className="flex flex-col gap-3 p-3">
+                <ul className="flex flex-col">
                   {r.artifacts.map((a) => (
-                    <DownloadButton
-                      key={a.fileName}
-                      href={a.url}
-                      fileName={a.fileName}
-                      className="flex items-center gap-3 rounded-md border border-line bg-bg px-3 py-2.5 text-left hover:border-line-strong hover:bg-surface-2"
-                    >
-                      {a.kind.startsWith('report') ? <FileText size={16} className="text-glow" /> : <FileJson size={16} className="text-info" />}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[12.5px]">{ARTIFACT_LABEL[a.kind]}</p>
-                        <p className="truncate font-mono text-[11px] text-subtle">
-                          {a.fileName} · {formatBytes(a.sizeBytes)} · {shortHash(a.sha256, 10)}
-                        </p>
-                      </div>
-                      <Download size={14} className="text-muted" />
-                    </DownloadButton>
+                    <li key={a.fileName} className="border-b border-line last:border-b-0">
+                      <DownloadButton
+                        href={a.url}
+                        fileName={a.fileName}
+                        className="flex w-full items-center gap-4 py-1.5 text-left hover:bg-surface-2"
+                      >
+                        <span className="w-64 shrink-0">{ARTIFACT_LABEL[a.kind]}</span>
+                        <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted">
+                          {a.fileName}, {formatBytes(a.sizeBytes)}, {shortHash(a.sha256, 10)}
+                        </span>
+                        <span className="text-xs text-muted">скачать</span>
+                      </DownloadButton>
+                    </li>
                   ))}
-                </div>
+                </ul>
                 <div>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <p className="text-[11px] font-semibold tracking-wider text-subtle uppercase">Повторное применение к другим данным</p>
+                  <div className="mb-1 flex items-center justify-between">
+                    <p className="text-xs text-muted">Повторное применение к другим данным</p>
                     <CopyButton value={r.reproduceCommand} label="копировать" />
                   </div>
-                  <pre className="overflow-x-auto rounded-md border border-line bg-bg px-3 py-2.5 font-mono text-[12px] text-fg/90">
-                    {r.reproduceCommand}
-                  </pre>
+                  <pre className="overflow-x-auto border border-line bg-bg px-3 py-2 font-mono text-xs">{r.reproduceCommand}</pre>
                 </div>
-              </CardBody>
+              </div>
             )}
-          </Card>
+          </Pane>
         ))}
       </div>
     </Page>

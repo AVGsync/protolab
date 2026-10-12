@@ -1,12 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { NotebookPen } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { hypothesisQueries } from '@/entities/hypothesis';
 import { observationQueries, SourceRefLink } from '@/entities/observation';
 import { routes } from '@/shared/config';
 import { formatDateTime, useRequiredParams } from '@/shared/lib';
-import { Badge, Card, EmptyState, ErrorState, Loader, Page, PageHeader, Select, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
+import { EmptyState, ErrorState, Loader, Page, PageHeader, Pane, Select, Status, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
 export function ObservationsPage() {
   const { projectId } = useRequiredParams('projectId');
@@ -19,7 +18,6 @@ export function ObservationsPage() {
     <Page>
       <PageHeader
         title="Наблюдения"
-        description="Факты в данных, привязанные к байтам исходной записи. Снимок байтов хранится вместе с наблюдением: изменение разбиения не может незаметно связать его с другими байтами."
         actions={
           <Select value={hypothesisId} onChange={(e) => setHypothesisId(e.target.value)} className="w-72">
             <option value="">Все гипотезы</option>
@@ -35,13 +33,12 @@ export function ObservationsPage() {
       {observations.error && <ErrorState error={observations.error} onRetry={observations.refetch} />}
       {observations.data && observations.data.items.length === 0 && (
         <EmptyState
-          icon={<NotebookPen size={20} />}
           title="Наблюдений нет"
           description="Выделите байты в потоке сессии и нажмите «Наблюдение»."
         />
       )}
       {observations.data && observations.data.items.length > 0 && (
-        <Card>
+        <Pane>
           <Table>
             <THead>
               <tr>
@@ -61,17 +58,17 @@ export function ObservationsPage() {
                     <div className="mt-0.5 font-mono text-[10.5px] text-subtle">пакеты #{o.source.packetNumbers.join(', #')}</div>
                   </Td>
                   <Td>
-                    <code className="font-mono text-[11.5px] text-glow">{o.snapshotHex}</code>
+                    <code className="font-mono text-[11.5px] text-fg">{o.snapshotHex}</code>
                     {o.integrity === 'mismatch' && (
                       <div className="mt-1">
-                        <Badge tone="danger">не совпадает с источником</Badge>
+                        <Status tone="danger">не совпадает с источником</Status>
                       </div>
                     )}
                   </Td>
                   <Td>
                     <div className="flex flex-col gap-0.5">
                       {o.hypothesisIds.map((id) => (
-                        <Link key={id} to={routes.hypotheses(projectId, id)} className="text-[12px] text-info hover:underline">
+                        <Link key={id} to={routes.hypotheses(projectId, id)} className="text-[12px] link">
                           {id}: {titleById.get(id) ?? ''}
                         </Link>
                       ))}
@@ -82,7 +79,7 @@ export function ObservationsPage() {
               ))}
             </TBody>
           </Table>
-        </Card>
+        </Pane>
       )}
     </Page>
   );

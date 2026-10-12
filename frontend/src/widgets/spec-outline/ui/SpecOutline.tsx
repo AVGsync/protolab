@@ -1,9 +1,10 @@
 import { Link } from 'react-router';
-import { HypothesisStatusBadge, type Hypothesis } from '@/entities/hypothesis';
+import { HypothesisStatusMark, type Hypothesis } from '@/entities/hypothesis';
 import type { FieldRule, InterpretationSpec } from '@/entities/interpretation';
-import { MeaningBadge } from '@/entities/message';
-import { DirectionBadge } from '@/entities/session';
+import { MeaningMark } from '@/entities/message';
+import { DirectionLabel } from '@/entities/session';
 import { routes } from '@/shared/config';
+import { Arrow } from '@/shared/ui';
 
 export interface SpecOutlineProps {
   projectId: string;
@@ -17,7 +18,7 @@ export function SpecOutline({ projectId, spec, hypotheses = [] }: SpecOutlinePro
   const f = spec.framing;
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-md border border-line bg-surface px-3 py-2.5 text-[12.5px]">
+      <div className="border border-line bg-surface px-3 py-2.5 text-[12.5px]">
         <span className="text-muted">Кадрирование: </span>
         {f.kind === 'length_prefixed' && (
           <span className="font-mono">
@@ -31,11 +32,11 @@ export function SpecOutline({ projectId, spec, hypotheses = [] }: SpecOutlinePro
       </div>
 
       {spec.messages.map((rule) => (
-        <div key={rule.id} className="rounded-md border border-line bg-surface">
+        <div key={rule.id} className="border border-line bg-surface">
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
             <span className="font-mono text-[12.5px] font-semibold">{rule.id}</span>
             {rule.title && <span className="text-muted">{rule.title}</span>}
-            {rule.direction && rule.direction !== 'any' && <DirectionBadge direction={rule.direction} compact />}
+            {rule.direction && rule.direction !== 'any' && <DirectionLabel direction={rule.direction} compact />}
             <span className="ml-auto font-mono text-[11px] text-subtle">
               {rule.match.map((m) => `@${m.offset}=${m.hex}`).join(' ∧ ')}
             </span>
@@ -49,12 +50,12 @@ export function SpecOutline({ projectId, spec, hypotheses = [] }: SpecOutlinePro
       ))}
 
       {spec.assertions && spec.assertions.length > 0 && (
-        <div className="rounded-md border border-line bg-surface px-3 py-2.5">
-          <p className="mb-1.5 text-[11px] font-semibold tracking-wider text-subtle uppercase">Проверки по журналу действий</p>
+        <div className="border border-line bg-surface px-3 py-2.5">
+          <p className="mb-1.5 text-xs text-muted">Проверки по журналу действий</p>
           <ul className="flex flex-col gap-1 text-[12.5px]">
             {spec.assertions.map((a) => (
               <li key={a.id} className="font-mono text-[12px]">
-                <span className="text-muted">{a.id}:</span> {a.rule} при «{a.actionKind}» →{' '}
+                <span className="text-muted">{a.id}:</span> {a.rule} при «{a.actionKind}» <Arrow />{' '}
                 {a.checks.map((c) => `${c.field} = ${c.equals}`).join(', ')}
               </li>
             ))}
@@ -84,11 +85,11 @@ function FieldLine({ field, projectId, byId, depth = 0 }: { field: FieldRule; pr
             {field.meaning ?? ''}
             {field.checksum && <span className="ml-1 font-mono text-[11px] text-info">[{field.checksum}]</span>}
           </span>
-          {field.status && <MeaningBadge status={field.status} />}
+          {field.status && <MeaningMark status={field.status} />}
           {h && (
             <Link to={routes.hypotheses(projectId, h.id)} title={`${h.id}: ${h.title}`} className="inline-flex items-center gap-1">
               <span className="font-mono text-[10.5px] text-subtle">{h.id}</span>
-              <HypothesisStatusBadge status={h.status} />
+              <HypothesisStatusMark status={h.status} />
             </Link>
           )}
         </span>

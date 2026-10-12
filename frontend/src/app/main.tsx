@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { env } from '@/shared/config';
 import { App } from './App';
+import './styles/fonts.css';
 import './styles/index.css';
 
 /** In mock mode the API is served by an MSW service worker (src/mocks). */

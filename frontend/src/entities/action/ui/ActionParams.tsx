@@ -2,11 +2,11 @@ export function ActionParams({ params }: { params: Record<string, string | numbe
   const entries = Object.entries(params ?? {});
   if (entries.length === 0) return <span className="text-subtle">—</span>;
   return (
-    <span className="inline-flex flex-wrap gap-1">
+    <span className="inline-flex flex-wrap gap-x-2.5 gap-y-0.5 font-mono text-xs">
       {entries.map(([k, v]) => (
-        <span key={k} className="rounded border border-line bg-surface-2 px-1.5 font-mono text-[11px]">
+        <span key={k}>
           <span className="text-muted">{k}=</span>
-          <span className="text-glow">{v}</span>
+          {v}
         </span>
       ))}
     </span>

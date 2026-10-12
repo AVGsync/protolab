@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { Columns3 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { actionQueries, numericParams, type ActionEntry } from '@/entities/action';
 import { interpretationQueries } from '@/entities/interpretation';
@@ -15,7 +14,7 @@ import {
   useRequiredParams,
   type FieldCandidate,
 } from '@/shared/lib';
-import { Card, CardBody, CardHeader, EmptyState, ErrorState, Field, Loader, Page, PageHeader, Select } from '@/shared/ui';
+import { Pane, PaneHeader, EmptyState, ErrorState, Field, Loader, Page, PageHeader, Select } from '@/shared/ui';
 
 /** Candidate value paths of an action: params.* and observed.* */
 function valuePaths(action: ActionEntry | undefined): Record<string, number> {
@@ -137,7 +136,7 @@ export function ComparePage() {
       </div>
 
       {!versionId && !interpretations.isLoading && (
-        <EmptyState icon={<Columns3 size={20} />} title="Нужна интерпретация" description="Сравнение работает с сообщениями, выделенными правилом кадрирования." />
+        <EmptyState title="Нужна интерпретация" description="Сравнение работает с сообщениями, выделенными правилом кадрирования." />
       )}
       {messages.isLoading && <Loader />}
       {messages.error && <ErrorState error={messages.error} onRetry={messages.refetch} />}
@@ -152,16 +151,13 @@ export function ComparePage() {
               highlight={picked ? { offset: picked.offset, length: ENCODING_SIZE[picked.encoding] } : null}
             />
             <p className="mt-2 text-[11.5px] text-subtle">
-              Цвет номера столбца: <span className="text-subtle">константа</span> · <span className="text-glow">различается</span> ·{' '}
-              <span className="text-violet">есть не во всех сообщениях</span>
+              Цвет номера столбца: <span className="text-subtle">константа</span> · <span className="text-fg">различается</span> ·{' '}
+              <span className="text-info">есть не во всех сообщениях</span>
             </p>
           </div>
-          <Card className="self-start">
-            <CardHeader
-              title="Кандидаты в поля"
-              description={`Позиции, где значение совпадает с ${activePath || 'параметром'} — основание и контрпримеры`}
-            />
-            <CardBody>
+          <Pane className="self-start">
+            <PaneHeader title="Кандидаты в поля" />
+            <div className="p-3">
               <CandidateList
                 search={search}
                 rowLabels={rows.map((r) => r.label)}
@@ -181,8 +177,8 @@ export function ComparePage() {
                   />
                 )}
               />
-            </CardBody>
-          </Card>
+            </div>
+          </Pane>
         </div>
       )}
     </Page>

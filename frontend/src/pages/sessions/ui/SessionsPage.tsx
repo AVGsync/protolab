@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { Network } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { actionQueries } from '@/entities/action';
@@ -8,7 +7,7 @@ import { sessionQueries, type SessionFilters, type SessionStatus } from '@/entit
 import { SessionTable } from '@/widgets/session-table';
 import { routes } from '@/shared/config';
 import { useDebouncedValue, useRequiredParams } from '@/shared/lib';
-import { Card, Checkbox, EmptyState, ErrorState, Input, Loader, Page, PageHeader, Select } from '@/shared/ui';
+import { Pane, Checkbox, EmptyState, ErrorState, Input, Loader, Page, PageHeader, Select } from '@/shared/ui';
 
 export function SessionsPage() {
   const { projectId } = useRequiredParams('projectId');
@@ -67,16 +66,16 @@ export function SessionsPage() {
       {sessions.isLoading && <Loader />}
       {sessions.error && <ErrorState error={sessions.error} onRetry={sessions.refetch} />}
       {sessions.data && sessions.data.items.length === 0 && (
-        <EmptyState icon={<Network size={20} />} title="Сессий не найдено" description="Измените фильтры или загрузите запись трафика." />
+        <EmptyState title="Сессий не найдено" description="Измените фильтры или загрузите запись трафика." />
       )}
       {sessions.data && sessions.data.items.length > 0 && (
-        <Card>
+        <Pane>
           <SessionTable
             sessions={sessions.data.items}
             actions={actions.data?.items}
             onOpen={(s) => navigate(routes.session(projectId, s.id))}
           />
-        </Card>
+        </Pane>
       )}
     </Page>
   );

@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Play } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { corpusQueries, describeCorpusFilter } from '@/entities/corpus';
 import { interpretationQueries } from '@/entities/interpretation';
@@ -59,7 +58,7 @@ export function StartRunButton({
 
   return (
     <>
-      <Button size={size} variant={variant} icon={<Play size={13} />} onClick={() => setOpen(true)}>
+      <Button size={size} variant={variant} onClick={() => setOpen(true)}>
         {label}
       </Button>
       <Modal

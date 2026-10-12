@@ -1,0 +1,467 @@
+{
+  "format": "protolab/v1",
+  "protocol": "ThermoLink",
+  "transport": {
+    "port": 5020
+  },
+  "framing": {
+    "kind": "length_prefixed",
+    "lengthField": {
+      "offset": 3,
+      "size": 2,
+      "endian": "le"
+    },
+    "lengthAdjust": 6,
+    "minLength": 6,
+    "maxLength": 4096,
+    "sync": "A5"
+  },
+  "messages": [
+    {
+      "id": "read_params_req",
+      "title": "Чтение параметров — запрос",
+      "direction": "c2s",
+      "match": [
+        {
+          "offset": 0,
+          "hex": "A5"
+        },
+        {
+          "offset": 1,
+          "hex": "01"
+        }
+      ],
+      "fields": [
+        {
+          "name": "magic",
+          "offset": 0,
+          "type": "u8",
+          "expect": {
+            "equals": 165
+          },
+          "meaning": "Маркер начала кадра",
+          "status": "confirmed",
+          "hypothesis": "h-01"
+        },
+        {
+          "name": "type",
+          "offset": 1,
+          "type": "u8",
+          "meaning": "Код типа сообщения",
+          "status": "structural"
+        },
+        {
+          "name": "seq",
+          "offset": 2,
+          "type": "u8",
+          "meaning": "Номер запроса (ответ повторяет номер)",
+          "status": "hypothesis",
+          "hypothesis": "h-07"
+        },
+        {
+          "name": "length",
+          "offset": 3,
+          "type": "u16",
+          "endian": "le",
+          "meaning": "Длина полезной нагрузки, Б",
+          "status": "confirmed",
+          "hypothesis": "h-02"
+        }
+      ]
+    },
+    {
+      "id": "read_params_resp",
+      "title": "Чтение параметров — ответ",
+      "direction": "s2c",
+      "match": [
+        {
+          "offset": 0,
+          "hex": "A5"
+        },
+        {
+          "offset": 1,
+          "hex": "81"
+        }
+      ],
+      "fields": [
+        {
+          "name": "magic",
+          "offset": 0,
+          "type": "u8",
+          "expect": {
+            "equals": 165
+          },
+          "meaning": "Маркер начала кадра",
+          "status": "confirmed",
+          "hypothesis": "h-01"
+        },
+        {
+          "name": "type",
+          "offset": 1,
+          "type": "u8",
+          "meaning": "Код типа сообщения",
+          "status": "structural"
+        },
+        {
+          "name": "seq",
+          "offset": 2,
+          "type": "u8",
+          "meaning": "Номер запроса (ответ повторяет номер)",
+          "status": "hypothesis",
+          "hypothesis": "h-07"
+        },
+        {
+          "name": "length",
+          "offset": 3,
+          "type": "u16",
+          "endian": "le",
+          "meaning": "Длина полезной нагрузки, Б",
+          "status": "confirmed",
+          "hypothesis": "h-02"
+        },
+        {
+          "name": "count",
+          "offset": 5,
+          "type": "u8",
+          "meaning": "Количество параметров",
+          "status": "hypothesis"
+        },
+        {
+          "name": "entries",
+          "offset": 6,
+          "type": "array",
+          "count": "count",
+          "itemSize": 3,
+          "items": [
+            {
+              "name": "param_id",
+              "offset": 0,
+              "type": "u8",
+              "meaning": "Идентификатор параметра",
+              "status": "hypothesis"
+            },
+            {
+              "name": "value",
+              "offset": 1,
+              "type": "u16",
+              "endian": "le",
+              "meaning": "Значение параметра",
+              "status": "hypothesis"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "set_param_req",
+      "title": "Изменение настройки — запрос",
+      "direction": "c2s",
+      "match": [
+        {
+          "offset": 0,
+          "hex": "A5"
+        },
+        {
+          "offset": 1,
+          "hex": "02"
+        }
+      ],
+      "hypothesis": "h-03",
+      "fields": [
+        {
+          "name": "magic",
+          "offset": 0,
+          "type": "u8",
+          "expect": {
+            "equals": 165
+          },
+          "meaning": "Маркер начала кадра",
+          "status": "confirmed",
+          "hypothesis": "h-01"
+        },
+        {
+          "name": "type",
+          "offset": 1,
+          "type": "u8",
+          "meaning": "Код типа сообщения",
+          "status": "structural"
+        },
+        {
+          "name": "seq",
+          "offset": 2,
+          "type": "u8",
+          "meaning": "Номер запроса (ответ повторяет номер)",
+          "status": "hypothesis",
+          "hypothesis": "h-07"
+        },
+        {
+          "name": "length",
+          "offset": 3,
+          "type": "u16",
+          "endian": "le",
+          "meaning": "Длина полезной нагрузки, Б",
+          "status": "confirmed",
+          "hypothesis": "h-02"
+        },
+        {
+          "name": "param_id",
+          "offset": 5,
+          "type": "u8",
+          "meaning": "Идентификатор параметра",
+          "status": "hypothesis"
+        },
+        {
+          "name": "value",
+          "offset": 6,
+          "type": "u8",
+          "meaning": "Новое значение",
+          "status": "hypothesis",
+          "hypothesis": "h-03"
+        }
+      ]
+    },
+    {
+      "id": "set_param_resp",
+      "title": "Изменение настройки — ответ",
+      "direction": "s2c",
+      "match": [
+        {
+          "offset": 0,
+          "hex": "A5"
+        },
+        {
+          "offset": 1,
+          "hex": "82"
+        }
+      ],
+      "fields": [
+        {
+          "name": "magic",
+          "offset": 0,
+          "type": "u8",
+          "expect": {
+            "equals": 165
+          },
+          "meaning": "Маркер начала кадра",
+          "status": "confirmed",
+          "hypothesis": "h-01"
+        },
+        {
+          "name": "type",
+          "offset": 1,
+          "type": "u8",
+          "meaning": "Код типа сообщения",
+          "status": "structural"
+        },
+        {
+          "name": "seq",
+          "offset": 2,
+          "type": "u8",
+          "meaning": "Номер запроса (ответ повторяет номер)",
+          "status": "hypothesis",
+          "hypothesis": "h-07"
+        },
+        {
+          "name": "length",
+          "offset": 3,
+          "type": "u16",
+          "endian": "le",
+          "meaning": "Длина полезной нагрузки, Б",
+          "status": "confirmed",
+          "hypothesis": "h-02"
+        },
+        {
+          "name": "status",
+          "offset": 5,
+          "type": "u8",
+          "enum": {
+            "0": "OK",
+            "1": "вне диапазона"
+          },
+          "meaning": "Результат",
+          "status": "hypothesis"
+        },
+        {
+          "name": "param_id",
+          "offset": 6,
+          "type": "u8",
+          "meaning": "Идентификатор параметра",
+          "status": "hypothesis"
+        }
+      ]
+    },
+    {
+      "id": "get_measurement_req",
+      "title": "Измерение — запрос",
+      "direction": "c2s",
+      "match": [
+        {
+          "offset": 0,
+          "hex": "A5"
+        },
+        {
+          "offset": 1,
+          "hex": "03"
+        }
+      ],
+      "fields": [
+        {
+          "name": "magic",
+          "offset": 0,
+          "type": "u8",
+          "expect": {
+            "equals": 165
+          },
+          "meaning": "Маркер начала кадра",
+          "status": "confirmed",
+          "hypothesis": "h-01"
+        },
+        {
+          "name": "type",
+          "offset": 1,
+          "type": "u8",
+          "meaning": "Код типа сообщения",
+          "status": "structural"
+        },
+        {
+          "name": "seq",
+          "offset": 2,
+          "type": "u8",
+          "meaning": "Номер запроса (ответ повторяет номер)",
+          "status": "hypothesis",
+          "hypothesis": "h-07"
+        },
+        {
+          "name": "length",
+          "offset": 3,
+          "type": "u16",
+          "endian": "le",
+          "meaning": "Длина полезной нагрузки, Б",
+          "status": "confirmed",
+          "hypothesis": "h-02"
+        },
+        {
+          "name": "channel",
+          "offset": 5,
+          "type": "u8",
+          "meaning": "Номер канала",
+          "status": "hypothesis"
+        }
+      ]
+    },
+    {
+      "id": "get_measurement_resp",
+      "title": "Измерение — ответ",
+      "direction": "s2c",
+      "match": [
+        {
+          "offset": 0,
+          "hex": "A5"
+        },
+        {
+          "offset": 1,
+          "hex": "83"
+        }
+      ],
+      "fields": [
+        {
+          "name": "magic",
+          "offset": 0,
+          "type": "u8",
+          "expect": {
+            "equals": 165
+          },
+          "meaning": "Маркер начала кадра",
+          "status": "confirmed",
+          "hypothesis": "h-01"
+        },
+        {
+          "name": "type",
+          "offset": 1,
+          "type": "u8",
+          "meaning": "Код типа сообщения",
+          "status": "structural"
+        },
+        {
+          "name": "seq",
+          "offset": 2,
+          "type": "u8",
+          "meaning": "Номер запроса (ответ повторяет номер)",
+          "status": "hypothesis",
+          "hypothesis": "h-07"
+        },
+        {
+          "name": "length",
+          "offset": 3,
+          "type": "u16",
+          "endian": "le",
+          "meaning": "Длина полезной нагрузки, Б",
+          "status": "confirmed",
+          "hypothesis": "h-02"
+        },
+        {
+          "name": "channel",
+          "offset": 5,
+          "type": "u8",
+          "meaning": "Номер канала",
+          "status": "hypothesis"
+        },
+        {
+          "name": "temperature",
+          "offset": 6,
+          "type": "u16",
+          "endian": "le",
+          "scale": 0.1,
+          "unit": "°C",
+          "meaning": "Температура",
+          "status": "hypothesis",
+          "hypothesis": "h-06"
+        },
+        {
+          "name": "humidity",
+          "offset": 8,
+          "type": "u16",
+          "endian": "le",
+          "scale": 0.1,
+          "unit": "%",
+          "meaning": "Влажность",
+          "status": "hypothesis"
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "id": "a-set-value",
+      "rule": "set_param_req",
+      "actionKind": "set_param",
+      "checks": [
+        {
+          "field": "param_id",
+          "equals": "params.paramId"
+        },
+        {
+          "field": "value",
+          "equals": "params.value"
+        }
+      ],
+      "hypothesis": "h-03"
+    },
+    {
+      "id": "a-measurement",
+      "rule": "get_measurement_resp",
+      "actionKind": "get_measurement",
+      "checks": [
+        {
+          "field": "temperature",
+          "equals": "observed.temperature"
+        },
+        {
+          "field": "humidity",
+          "equals": "observed.humidity"
+        }
+      ],
+      "hypothesis": "h-06"
+    }
+  ]
+}

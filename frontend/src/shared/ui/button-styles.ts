@@ -4,23 +4,24 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'xs' | 'sm' | 'md';
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-white hover:bg-accent/90 border-transparent',
-  secondary: 'bg-surface-2 text-fg border-line hover:bg-surface-3 hover:border-line-strong',
-  ghost: 'bg-transparent text-muted border-transparent hover:bg-surface-2 hover:text-fg',
-  danger: 'bg-danger/15 text-danger border-danger/30 hover:bg-danger/25',
+  // The primary action is a neutral "hard key": inverted text colours. Crimson is never a fill.
+  primary: 'border-fg bg-fg text-bg hover:bg-fg/85',
+  secondary: 'border-line-strong bg-transparent text-fg hover:bg-surface-2',
+  ghost: 'border-transparent bg-transparent text-muted hover:bg-surface-2 hover:text-fg',
+  danger: 'border-danger/60 bg-transparent text-danger hover:bg-danger/10',
 };
 
 const SIZES: Record<ButtonSize, string> = {
-  xs: 'h-6 px-2 text-xs gap-1',
-  sm: 'h-7 px-2.5 text-xs gap-1.5',
-  md: 'h-8 px-3 text-[13px] gap-2',
+  xs: 'h-5 gap-1 px-1.5 text-xs',
+  sm: 'h-6 gap-1.5 px-2 text-xs',
+  md: 'h-7 gap-2 px-3 text-[13px]',
 };
 
-/** Shared button look — also used for router links styled as buttons. */
+/** Shared button look, also used for router links styled as buttons. */
 export function buttonClass(variant: ButtonVariant = 'secondary', size: ButtonSize = 'md', className?: string): string {
   return cn(
-    'inline-flex shrink-0 items-center justify-center rounded-md border font-medium whitespace-nowrap transition-colors',
-    'disabled:pointer-events-none disabled:opacity-50',
+    'inline-flex shrink-0 items-center justify-center rounded-ctl border font-medium whitespace-nowrap transition-colors select-none',
+    'disabled:pointer-events-none disabled:opacity-45',
     VARIANTS[variant],
     SIZES[size],
     className,

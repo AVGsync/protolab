@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ListPlus } from 'lucide-react';
 import { actionApi } from '@/entities/action';
 import { projectKeys } from '@/entities/project';
 import { FileButton, toast } from '@/shared/ui';
@@ -18,7 +17,7 @@ export function ImportActionsButton({ projectId }: { projectId: string }) {
   });
 
   return (
-    <FileButton accept=".csv,.json" icon={<ListPlus size={14} />} loading={mutation.isPending} onFile={(f) => mutation.mutate(f)}>
+    <FileButton accept=".csv,.json" loading={mutation.isPending} onFile={(f) => mutation.mutate(f)}>
       Импорт журнала
     </FileButton>
   );

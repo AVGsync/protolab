@@ -1,8 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Settings2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { projectApi, projectKeys, type ChecksumPolicy, type OverlapPolicy, type Project } from '@/entities/project';
-import { Button, Callout, Field, Input, Modal, Select, toast } from '@/shared/ui';
+import { Button, Note, Field, Input, Modal, Select, toast } from '@/shared/ui';
 
 /** Reassembly settings are part of reproducibility: changing them marks runs as stale. */
 export function ProjectSettingsButton({ project }: { project: Project }) {
@@ -36,7 +35,7 @@ export function ProjectSettingsButton({ project }: { project: Project }) {
 
   return (
     <>
-      <Button size="sm" variant="ghost" icon={<Settings2 size={13} />} onClick={() => setOpen(true)}>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
         Настройки
       </Button>
       <Modal
@@ -70,7 +69,7 @@ export function ProjectSettingsButton({ project }: { project: Project }) {
           <Field label="Порты устройства" hint="Сессии на этих портах считаются целевыми">
             <Input value={ports} onChange={(e) => setPorts(e.target.value)} className="font-mono" />
           </Field>
-          <Callout tone="warning">Изменение параметров пометит существующие проверки как устаревшие.</Callout>
+          <Note tone="warn">Изменение параметров пометит существующие проверки как устаревшие.</Note>
         </form>
       </Modal>
     </>

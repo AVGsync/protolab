@@ -1,5 +1,5 @@
-import { SegmentFlagBadge, type Packet } from '@/entities/stream';
-import { DirectionBadge } from '@/entities/session';
+import { SegmentFlagMark, type Packet } from '@/entities/stream';
+import { DirectionLabel } from '@/entities/session';
 import { diffMs, formatDuration } from '@/shared/lib';
 import { Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
@@ -31,7 +31,7 @@ export function PacketTable({ packets, onSelect }: PacketTableProps) {
             <Td className="font-mono text-[11.5px] text-subtle">{p.number}</Td>
             <Td className="font-mono text-[11.5px] whitespace-nowrap text-muted">+{t0 ? formatDuration(diffMs(t0, p.timestamp)) : ''}</Td>
             <Td>
-              <DirectionBadge direction={p.direction} compact />
+              <DirectionLabel direction={p.direction} compact />
             </Td>
             <Td className="font-mono text-[11px] whitespace-nowrap">{p.tcpFlags.join(',')}</Td>
             <Td className="text-right font-mono text-[11.5px] text-muted">{p.seq}</Td>
@@ -40,7 +40,7 @@ export function PacketTable({ packets, onSelect }: PacketTableProps) {
             <Td>
               <span className="flex flex-wrap gap-1">
                 {p.flags.map((f) => (
-                  <SegmentFlagBadge key={f} flag={f} />
+                  <SegmentFlagMark key={f} flag={f} />
                 ))}
               </span>
             </Td>

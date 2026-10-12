@@ -1,15 +1,16 @@
 # ProtoLab REST API v1 — контракт frontend ↔ backend
 
-Документ описывает API, которое ожидает React-фронтенд (`frontend/`). Источник истины для
-структур данных — TypeScript-типы в `frontend/src/entities/*/model/types.ts`, а также
-`frontend/src/shared/api/types.ts`. Эталонное поведение каждого эндпоинта реализовано в
-mock-обработчиках `frontend/src/mocks/handlers/*` — их удобно читать как спецификацию.
+Документ описывает API между React-фронтендом (`frontend/`) и Go-сервером (`internal/server`).
+Структуры данных описаны дважды и должны совпадать: TypeScript-типы в
+`frontend/src/entities/*/model/types.ts` и `frontend/src/shared/api/types.ts`, Go-структуры в
+`internal/model/entities.go`. Поведение реализовано в `internal/app` (Go) и повторено в
+mock-обработчиках `frontend/src/mocks/handlers/*` для разработки интерфейса без сервера.
 
 ## Общие соглашения
 
 | Аспект | Соглашение |
 |---|---|
-| Базовый путь | `/api/v1` (фронтенд и API на одном origin; в dev Vite проксирует `/api` на `localhost:8080`) |
+| Базовый путь | `/api/v1`. Фронтенд и API отдаются одним бинарём с одного origin (по умолчанию `http://127.0.0.1:7420`); в dev Vite проксирует `/api` на `127.0.0.1:7420` |
 | Формат | `application/json`, поля в `camelCase` |
 | Время | RFC 3339 в UTC с наносекундами (`time.RFC3339Nano`), например `2026-09-14T10:00:05.000310Z`. Фронтенд берёт доли секунды прямо из строки — не округляйте до миллисекунд |
 | Идентификаторы | непрозрачные строки (`prj-…`, `cap-…`, `ses-…`); фронтенд не разбирает их |
@@ -20,8 +21,15 @@ mock-обработчиках `frontend/src/mocks/handlers/*` — их удоб�
 | Скачивание файлов | обычный `GET` с `Content-Disposition: attachment; filename="..."` |
 
 Коды ошибок, которые фронтенд отображает осмысленно: `validation_error` (422), `invalid_spec` (422, `details` — `SpecIssue[]`),
-`unsupported_format` (422), `duplicate_capture` (409), `no_changes` (409), `not_cancellable` (409),
-`source_mismatch` (409), `not_found` (404). Клиент не повторяет запросы при 4xx.
+`unsupported_format` (422), `invalid_action_log` (422), `message_limit` (422), `capture_too_large` (413),
+`duplicate_capture` (409), `no_changes` (409), `not_cancellable` (409), `source_mismatch` (409), `not_found` (404).
+Клиент не повторяет запросы при 4xx.
+
+Защита локального сервера (`internal/server/server.go`): запросы с `Host`, отличным от loopback
+(`127.0.0.1`, `localhost`, `[::1]`), отклоняются `403` — это закрывает DNS rebinding. Изменяющие запросы
+(`POST/PATCH/DELETE`) с `Sec-Fetch-Site: cross-site` или с `Origin` чужого сайта отклоняются `403` —
+это закрывает CSRF из браузера. Если сервер явно запущен на не-loopback адресе (`--addr 0.0.0.0:7420`),
+проверка `Host` отключается, о чём пишется предупреждение в журнал.
 
 ## Эндпоинты
 
@@ -35,6 +43,7 @@ mock-обработчиках `frontend/src/mocks/handlers/*` — их удоб�
 | `PATCH /projects/{projectId}` | `{settings?: Partial<ProjectSettings>, name?, description?}` | `Project` |
 | `POST /projects/import` | multipart `file` (архив проекта) | `201 Project`, импорт идёт задачей `import_project` |
 | `GET /projects/{projectId}/export` | — | архив проекта (`.zip`), см. «Перенос проекта» |
+| `POST /demo` | — | `201 Project` — демо-проект ThermoLink TC-200 (записи, журнал, интерпретация v1–v3, проверки) |
 
 ### Записи трафика и сессии
 
@@ -50,7 +59,7 @@ mock-обработчиках `frontend/src/mocks/handlers/*` — их удоб�
 | `GET /sessions/{sessionId}/streams/{dir}/bytes` | `offset?`, `length?` | `application/octet-stream` + заголовок `X-Stream-Length` |
 
 > **Пропуски в потоке.** В бинарном ответе `/bytes` байты пропусков заполнены нулями *только для
-> транспорта*. Их значение неизвестно; фронтенд накладывает `DirectedStream.gaps` и показывает `??`.
+> транспорта* (в памяти сервера на их месте тоже нули, но движок разбора знает их диапазоны). Их значение неизвестно; фронтенд накладывает `DirectedStream.gaps` и показывает `??`.
 > Движок разбора тоже обязан считать эти байты неизвестными (поле, задевающее пропуск, получает
 > `status: "unknown"`).
 
@@ -69,10 +78,13 @@ mock-обработчиках `frontend/src/mocks/handlers/*` — их удоб�
 | `POST /projects/{projectId}/actions` | `CreateActionInput` | `201 ActionEntry` |
 | `POST /projects/{projectId}/actions/import` | multipart `file`: CSV или JSON | `ImportActionsResult` |
 
-CSV: `timestamp,kind,label,params,result`; `params` — `k=v;k=v` или JSON-объект.
-`kind` ∈ `read_params | set_param | get_measurement | read_log | other`. Сессии привязываются
-автоматически: первая целевая сессия, начавшаяся не раньше чем за 0,5 с до действия и не позже чем через 5 с после него
-(`links[].method = "auto_time"`, `deltaMs`).
+CSV: `timestamp,kind,label,params,result[,observed]`; `params` и `observed` — `k=v;k=v` или JSON-объект
+(значения — числа или строки). Первая строка с `timestamp` в первой колонке считается заголовком.
+JSON — массив `CreateActionInput`. Ошибка в любой записи отклоняет весь файл (`422 invalid_action_log`,
+в `message` — номер строки). `kind` ∈ `read_params | set_param | get_measurement | read_log | other`
+(неизвестный — `other`). Сессии привязываются автоматически: из целевых сессий, начавшихся в окне
+от 0,5 с до действия до 5 с после него, выбирается ближайшая по времени
+(`links[].method = "auto_time"`, `deltaMs` — начало сессии минус время действия).
 
 ### Интерпретации
 
@@ -122,7 +134,7 @@ CSV: `timestamp,kind,label,params,result`; `params` — `k=v;k=v` или JSON-о
 | `GET /jobs` | `limit?` (по умолчанию 20) | `ListResponse<Job>` — последние задачи всех проектов |
 | `GET /jobs/{jobId}` | — | `Job` |
 | `POST /jobs/{jobId}/cancel` | — | `Job`; `409 not_cancellable`, если задача уже завершена |
-| `GET /system/info` | — | `SystemInfo` (сборка, защитные пределы, `runtime.MemStats`) |
+| `GET /system/info` | — | `SystemInfo` (сборка, защитные пределы, `runtime.MemStats`, каталог данных) |
 
 ## Обязательная семантика
 
@@ -154,42 +166,29 @@ CSV: `timestamp,kind,label,params,result`; `params` — `k=v;k=v` или JSON-о
 
 ## Перенос проекта
 
-`GET /projects/{id}/export` отдаёт архив (`<id>.protolab.zip`) с относительными путями:
+`GET /projects/{id}/export` отдаёт zip-архив (`<имя>.protolab.zip`) — это каталог проекта как есть,
+с относительными путями:
 
 ```text
-project.json            # Project + settings
-captures/<sha256>.pcapng
-actions.json
-interpretations/<id>/v<N>.json
-hypotheses.json
-observations.json
-corpora.json
-runs/<runId>.json        # run + findings
-reports/<reportId>/...   # артефакты отчётов
+project.json                 # всё состояние: проект, записи, журнал, интерпретации и версии,
+                             # гипотезы, наблюдения, корпуса, проверки с находками, отчёты
+captures/<sha256>.pcapng     # исходные записи без изменений (хранятся в архиве без сжатия)
+reports/<reportId>/...       # артефакты отчётов
 ```
 
-В mock-режиме вместо zip отдаётся JSON с тем же содержимым (без файлов записей).
+Сессии, потоки и сообщения в архив не попадают: они детерминированно восстанавливаются из записей при
+первом обращении. Поэтому после импорта (`POST /projects/import`) запускается задача `import_project`,
+которая заново разбирает записи и сверяет `sha256`.
+
+Импорт проверяет архив: допускаются только `project.json`, `captures/` и `reports/`; абсолютные пути,
+`..` и `:` в именах отклоняются; общий объём распакованных данных ограничен. Если в каталоге данных уже
+есть проект с теми же идентификаторами (импорт собственного экспорта), все идентификаторы
+перевыпускаются, ссылки между сущностями сохраняются.
 
 ## Раздача фронтенда из Go
 
-Собранный `frontend/dist` встраивается в бинарник. Все пути, кроме `/api/`, должны отдавать
-`index.html` (fallback для SPA):
-
-```go
-//go:embed all:dist
-var dist embed.FS
-
-func spaHandler() http.Handler {
-	sub, _ := fs.Sub(dist, "dist")
-	files := http.FileServerFS(sub)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, err := fs.Stat(sub, strings.TrimPrefix(r.URL.Path, "/")); err != nil {
-			r.URL.Path = "/" // client-side route → index.html
-		}
-		files.ServeHTTP(w, r)
-	})
-}
-
-mux.Handle("/api/v1/", apiRouter)
-mux.Handle("/", spaHandler())
-```
+`npm run build` складывает сборку в `internal/webui/dist`, а `internal/webui/webui.go` встраивает её в
+бинарь директивой `//go:embed all:dist`. `internal/server/static.go` отдаёт файлы как SPA: существующий
+файл — как есть (`/assets/*` с `Cache-Control: immutable`), `index.html` — с `no-cache`, любой другой путь
+вне `/api/` — `index.html` (клиентский роутинг), отсутствующий `/assets/*` — `404`. Если бинарь собран без
+фронтенда, вместо интерфейса отдаётся страница-подсказка, API при этом работает.

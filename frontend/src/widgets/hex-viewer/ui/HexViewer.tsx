@@ -168,7 +168,7 @@ export function HexViewer({
             {hoverSeg && (
               <span>
                 <span className="text-subtle">пакет</span> #{hoverSeg.packetNumber} · {formatTimestamp(hoverSeg.timestamp)}
-                {hoverSeg.flags.length > 0 && <span className="text-warning"> · {hoverSeg.flags.join(', ')}</span>}
+                {hoverSeg.flags.length > 0 && <span className="text-warn"> · {hoverSeg.flags.join(', ')}</span>}
               </span>
             )}
             {lookup.hlIndex[hover] >= 0 && highlights[lookup.hlIndex[hover]].label && (
@@ -221,11 +221,11 @@ const HexRow = memo(function HexRow({ row, top, bytes, bytesPerRow, unknown, loo
     const style = !selected && hl >= 0 ? { backgroundColor: `color-mix(in srgb, ${highlights[hl].color} 32%, transparent)` } : undefined;
     const cls = cn(
       'inline-block cursor-text text-center',
-      seg >= 0 && seg % 2 === 1 && 'bg-white/[0.035]',
+      seg >= 0 && seg % 2 === 1 && 'bg-surface-2',
       seg < 0 && !isUnknown && 'text-subtle',
       isUnknown && 'bg-hatch text-danger/80',
-      lookup.msgStart[o] === 1 && 'shadow-[inset_2px_0_0_var(--color-glow)]',
-      selected && 'bg-accent/50 text-white',
+      lookup.msgStart[o] === 1 && 'shadow-[inset_2px_0_0_var(--color-line-strong)]',
+      selected && 'bg-selection text-fg',
       hover === o && 'outline outline-1 -outline-offset-1 outline-glow',
     );
     const gapAfter = (o - start) % 8 === 7 && o - start < bytesPerRow - 1;

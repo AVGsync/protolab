@@ -1,15 +1,15 @@
+import { ArrowLeftIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Clock3 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { corpusQueries, describeCorpusFilter } from '@/entities/corpus';
 import { interpretationQueries } from '@/entities/interpretation';
-import { FINDING_KIND, FINDING_KINDS, RunStatusBadge, StaleBadge, verificationQueries, type FindingKind } from '@/entities/verification';
+import { FINDING_KIND, FINDING_KINDS, RunStatusMark, StaleTag, verificationQueries, type FindingKind } from '@/entities/verification';
 import { StartRunButton } from '@/features/run-verification';
-import { FindingsTable, RuleStatsTable, RunSummaryCards } from '@/widgets/verification-report';
+import { FindingsTable, RuleStatsTable, RunReadout } from '@/widgets/verification-report';
 import { routes } from '@/shared/config';
 import { formatDateTime, formatDuration, shortHash, useRequiredParams } from '@/shared/lib';
-import { Callout, Card, CardBody, CardHeader, EmptyState, ErrorState, KeyValue, Loader, Mono, Page, PageHeader, Progress, Tabs } from '@/shared/ui';
+import { EmptyState, ErrorState, KeyValue, Loader, Mono, Note, Page, PageHeader, Pane, PaneHeader, Progress, Tabs } from '@/shared/ui';
 
 export function RunDetailsPage() {
   const { projectId, runId } = useRequiredParams('projectId', 'runId');
@@ -34,7 +34,7 @@ export function RunDetailsPage() {
   return (
     <Page className="max-w-none">
       <Link to={routes.verification(projectId)} className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
-        <ArrowLeft size={13} /> Все проверки
+        <ArrowLeftIcon size={12} /> Все проверки
       </Link>
       <PageHeader
         title={
@@ -44,8 +44,8 @@ export function RunDetailsPage() {
         }
         meta={
           <>
-            <RunStatusBadge status={r.status} />
-            {r.stale && <StaleBadge reasons={r.staleReasons} />}
+            <RunStatusMark status={r.status} />
+            {r.stale && <StaleTag reasons={r.staleReasons} />}
           </>
         }
         actions={
@@ -62,24 +62,24 @@ export function RunDetailsPage() {
       />
 
       {r.stale && (
-        <Callout tone="warning" icon={<Clock3 size={14} />} title="Результат устарел и не отражает текущее состояние" className="mb-4">
+        <Note tone="warn" title="Результат устарел и не отражает текущее состояние" className="mb-4">
           <ul className="list-inside list-disc">
             {r.staleReasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
           </ul>
-        </Callout>
+        </Note>
       )}
 
       <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Что проверялось" />
-          <CardBody>
+        <Pane>
+          <PaneHeader title="Что проверялось" />
+          <div className="p-3">
             <KeyValue
               items={[
                 [
                   'Интерпретация',
-                  <Link key="i" to={routes.interpretation(projectId, r.interpretationId, r.versionId)} className="text-info hover:underline">
+                  <Link key="i" to={routes.spec(projectId, { interpretationId: r.interpretationId, versionId: r.versionId })} className="link">
                     {r.interpretationName} v{r.version}
                   </Link>,
                 ],
@@ -89,11 +89,11 @@ export function RunDetailsPage() {
                 ['Хеш корпуса', <Mono key="c">{shortHash(r.corpusHash, 24)}</Mono>],
               ]}
             />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title="Условия воспроизведения" />
-          <CardBody>
+          </div>
+        </Pane>
+        <Pane>
+          <PaneHeader title="Условия воспроизведения" />
+          <div className="p-3">
             <KeyValue
               items={[
                 ['Движок', <Mono key="e">{r.engineVersion}</Mono>],
@@ -103,49 +103,49 @@ export function RunDetailsPage() {
                 ['Длительность', r.durationMs !== undefined ? formatDuration(r.durationMs) : '—'],
               ]}
             />
-          </CardBody>
-        </Card>
+          </div>
+        </Pane>
       </div>
 
       {(r.status === 'running' || r.status === 'queued') && (
-        <Card className="mb-4 px-4 py-4">
+        <Pane className="mb-4 px-4 py-4">
           <p className="mb-2 text-[13px]">Проверка выполняется…</p>
-          <Progress value={0.5} tone="info" className="animate-pulse" />
-        </Card>
+          <Progress value={0.5} className="animate-pulse" />
+        </Pane>
       )}
 
       {r.summary && (
         <>
-          <RunSummaryCards summary={r.summary} previous={previous.data?.summary} />
+          <RunReadout summary={r.summary} previous={previous.data?.summary} />
           {previous.data && (
             <p className="mt-2 text-[11.5px] text-subtle">
               Сравнение с предыдущей проверкой той же интерпретации на этом корпусе:{' '}
-              <Link to={routes.run(projectId, previous.data.id)} className="text-info hover:underline">
+              <Link to={routes.run(projectId, previous.data.id)} className="link">
                 {previous.data.id} (v{previous.data.version})
               </Link>
             </p>
           )}
-          <Callout tone="info" className="mt-4">
+          <Note tone="info" className="mt-4">
             Совпадение на выбранных примерах не доказывает назначение полей и универсальность модели. Неприменимые правила
             {r.summary.inapplicableRules.length ? ` (${r.summary.inapplicableRules.join(', ')})` : ''} на этом корпусе не проверены.
-          </Callout>
+          </Note>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_340px]">
-            <Card className="min-w-0">
+            <Pane className="min-w-0">
               <Tabs<FindingKind | 'all'>
                 value={kind}
                 onChange={setKind}
                 items={[
-                  { id: 'all', label: 'Все', badge: all.length },
-                  ...FINDING_KINDS.filter((k) => countOf(k) > 0).map((k) => ({ id: k, label: FINDING_KIND[k].label, badge: countOf(k) })),
+                  { id: 'all', label: 'Все', count: all.length },
+                  ...FINDING_KINDS.filter((k) => countOf(k) > 0).map((k) => ({ id: k, label: FINDING_KIND[k].label, count: countOf(k) })),
                 ]}
               />
               {findings.isLoading ? <Loader /> : <FindingsTable projectId={projectId} findings={visible} versionId={r.versionId} />}
-            </Card>
-            <Card className="self-start">
-              <CardHeader title="По правилам" />
+            </Pane>
+            <Pane className="self-start">
+              <PaneHeader title="По правилам" />
               <RuleStatsTable summary={r.summary} />
-            </Card>
+            </Pane>
           </div>
         </>
       )}

@@ -1,7 +1,7 @@
-import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { useRef } from 'react';
 import type { SpecIssue } from '@/entities/interpretation';
 import { cn } from '@/shared/lib';
+import { Status } from '@/shared/ui';
 
 export interface SpecEditorProps {
   value: string;
@@ -21,7 +21,7 @@ export function SpecEditor({ value, onChange, syntaxError, issues = [], readOnly
 
   return (
     <div className={cn('flex min-h-0 flex-col', className)}>
-      <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-t-md border border-line bg-bg">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden border border-line bg-bg">
         <div
           ref={gutter}
           aria-hidden
@@ -51,22 +51,19 @@ export function SpecEditor({ value, onChange, syntaxError, issues = [], readOnly
           className="min-h-0 flex-1 resize-none bg-transparent px-3 py-2 font-mono text-[12px] leading-[19px] whitespace-pre text-fg outline-none"
         />
       </div>
-      <div className="max-h-36 overflow-y-auto rounded-b-md border border-t-0 border-line bg-surface px-3 py-2 text-[12px]">
+      <div className="max-h-36 overflow-y-auto border border-t-0 border-line bg-surface px-3 py-2 text-xs">
         {syntaxError ? (
-          <p className="flex items-center gap-2 text-danger">
-            <XCircle size={13} /> Синтаксис JSON: {syntaxError}
-          </p>
+          <Status tone="danger">Синтаксис JSON: {syntaxError}</Status>
         ) : errors.length === 0 && warnings.length === 0 ? (
-          <p className="flex items-center gap-2 text-success">
-            <CheckCircle2 size={13} /> JSON корректен
-          </p>
+          <Status tone="ok">JSON корректен</Status>
         ) : (
           <ul className="flex flex-col gap-1">
             {[...errors, ...warnings].map((issue, i) => (
-              <li key={i} className={cn('flex items-start gap-2', issue.severity === 'error' ? 'text-danger' : 'text-warning')}>
-                {issue.severity === 'error' ? <XCircle size={13} className="mt-0.5" /> : <AlertTriangle size={13} className="mt-0.5" />}
-                <code className="font-mono text-[11px] text-muted">{issue.path}</code>
-                <span className="text-fg/85">{issue.message}</span>
+              <li key={i} className="flex items-start gap-2">
+                <Status tone={issue.severity === 'error' ? 'danger' : 'warn'} className="[&>i]:mt-[1px]">
+                  <code className="font-mono text-[11px] text-muted">{issue.path}</code>
+                </Status>
+                <span>{issue.message}</span>
               </li>
             ))}
           </ul>
