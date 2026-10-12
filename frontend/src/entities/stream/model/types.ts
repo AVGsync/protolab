@@ -1,6 +1,6 @@
 import type { Direction, ISODateTime } from '@/shared/api';
 
-export type SegmentFlag = 'retransmission' | 'out_of_order' | 'overlap_conflict' | 'checksum_warning' | 'truncated';
+export type SegmentFlag = 'retransmission' | 'out_of_order' | 'overlap_conflict' | 'checksum_warning' | 'truncated' | 'keep_alive';
 
 /** A TCP payload placed into the directed stream by its sequence number. */
 export interface StreamSegment {

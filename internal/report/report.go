@@ -34,6 +34,8 @@ type CorpusExample struct {
 	Run      string           `json:"run"`
 	Sessions []SessionRef     `json:"sessions"`
 	Expected model.RunSummary `json:"expected"`
+	// Settings the run reassembled the streams with, when they differ from Examples.Settings.
+	Settings *ExampleSettings `json:"settings,omitempty"`
 }
 
 // Examples is the examples file format.
@@ -46,9 +48,11 @@ type Examples struct {
 	Corpora  []CorpusExample `json:"corpora"`
 }
 
+// ExampleSettings are the stream reassembly settings the expected results were obtained with.
 type ExampleSettings struct {
-	OverlapPolicy string `json:"overlapPolicy"`
-	TargetPorts   []int  `json:"targetPorts"`
+	OverlapPolicy  string `json:"overlapPolicy"`
+	ChecksumPolicy string `json:"checksumPolicy,omitempty"` // absent in older files: "warn"
+	TargetPorts    []int  `json:"targetPorts"`
 }
 
 type RunData struct {
@@ -113,11 +117,24 @@ func Render(in Input) ([]File, error) {
 		return nil, err
 	}
 
+	// The expected results were computed with the settings of each run, which
+	// may differ from the current project settings (a stale run).
+	settings := ExampleSettings{
+		OverlapPolicy:  in.Project.Settings.OverlapPolicy,
+		ChecksumPolicy: in.Project.Settings.ChecksumPolicy,
+		TargetPorts:    in.Project.Settings.TargetPorts,
+	}
+	for _, r := range in.Runs {
+		if r.Run.Summary != nil {
+			settings.OverlapPolicy, settings.ChecksumPolicy = r.Run.Settings.OverlapPolicy, r.Run.Settings.ChecksumPolicy
+			break
+		}
+	}
 	ex := Examples{
 		Format:   ExamplesFormat,
 		Spec:     specName,
 		SpecHash: in.Version.Hash,
-		Settings: ExampleSettings{OverlapPolicy: in.Project.Settings.OverlapPolicy, TargetPorts: in.Project.Settings.TargetPorts},
+		Settings: settings,
 		Corpora:  []CorpusExample{},
 	}
 	for _, r := range in.Runs {
@@ -125,7 +142,11 @@ func Render(in Input) ([]File, error) {
 			continue
 		}
 		ex.Engine = r.Run.EngineVersion
-		ex.Corpora = append(ex.Corpora, CorpusExample{Name: r.Corpus.Name, Run: r.Run.ID, Sessions: r.Sessions, Expected: *r.Run.Summary})
+		c := CorpusExample{Name: r.Corpus.Name, Run: r.Run.ID, Sessions: r.Sessions, Expected: *r.Run.Summary}
+		if r.Run.Settings.OverlapPolicy != settings.OverlapPolicy || r.Run.Settings.ChecksumPolicy != settings.ChecksumPolicy {
+			c.Settings = &ExampleSettings{OverlapPolicy: r.Run.Settings.OverlapPolicy, ChecksumPolicy: r.Run.Settings.ChecksumPolicy, TargetPorts: settings.TargetPorts}
+		}
+		ex.Corpora = append(ex.Corpora, c)
 	}
 	examplesJSON, err := json.MarshalIndent(ex, "", "  ")
 	if err != nil {

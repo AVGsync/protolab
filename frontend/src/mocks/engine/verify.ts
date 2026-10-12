@@ -167,10 +167,15 @@ export function verify(spec: InterpretationSpec, inputs: SessionInput[]): Verifi
         for (const u of m.unknown) {
           summary.unknownBytes += u.length;
           const fromEnd = u.offset + u.length === m.length;
-          const where = fromEnd && u.length === 1 ? 'последний байт' : `байты ${u.offset}–${u.offset + u.length - 1}`;
+          const what =
+            u.length !== 1
+              ? `байты ${u.offset}–${u.offset + u.length - 1} не описаны полями`
+              : fromEnd
+                ? 'последний байт не описан полями'
+                : `байт ${u.offset} не описан полями`;
           add(
             `unknown_region:${m.ruleId}:${fromEnd ? `end-${u.length}` : u.offset}`,
-            { kind: 'unknown_region', severity: 'info', ruleId: m.ruleId, message: `${m.ruleId}: ${where} не описаны полями` },
+            { kind: 'unknown_region', severity: 'info', ruleId: m.ruleId, message: `${m.ruleId}: ${what}` },
             ref(input, m.direction, m.offset + u.offset, u.length),
           );
         }

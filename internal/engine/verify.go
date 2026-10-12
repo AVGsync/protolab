@@ -335,12 +335,15 @@ func (t *tally) unknownRegion(s *session, st *stream, m *model.Message, ruleID s
 	}
 	f, isNew := t.bucket(key)
 	if isNew {
-		where := "байты " + strconv.Itoa(u.Offset) + "–" + strconv.Itoa(u.End()-1)
-		if fromEnd && u.Length == 1 {
-			where = "последний байт"
+		what := "байты " + strconv.Itoa(u.Offset) + "–" + strconv.Itoa(u.End()-1) + " не описаны полями"
+		switch {
+		case fromEnd && u.Length == 1:
+			what = "последний байт не описан полями"
+		case u.Length == 1:
+			what = "байт " + strconv.Itoa(u.Offset) + " не описан полями"
 		}
 		f.Kind, f.Severity, f.RuleID = model.FindingUnknownRegion, model.LevelInfo, ruleID
-		f.Message = ruleID + ": " + where + " не описаны полями"
+		f.Message = ruleID + ": " + what
 	}
 	t.example(f, s, st, m.Offset+u.Offset, u.Length)
 }

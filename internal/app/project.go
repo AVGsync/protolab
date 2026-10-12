@@ -73,6 +73,11 @@ func normalizeState(st *store.State) {
 	for i := range st.Reports {
 		st.Reports[i].RunIDs = nonNil(st.Reports[i].RunIDs)
 	}
+	for i := range st.Versions {
+		// Specs stored before Decode normalized them may hold null lists; the
+		// stored hash is kept as it was computed.
+		st.Versions[i].Spec.Normalize()
+	}
 	for i := range st.Captures {
 		if st.Captures[i].Diagnostics == nil {
 			st.Captures[i].Diagnostics = []model.Diagnostic{}

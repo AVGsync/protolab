@@ -133,18 +133,22 @@ func (a *App) UpdateProject(id string, patch ProjectPatch) (model.Project, error
 	}
 	reanalyze := false
 	err = p.update(func(st *store.State) error {
+		// Changes go to a copy that replaces the project only when all of them are
+		// valid: a rejected request must not leave half of it applied in memory.
+		next := st.Project
+		next.Settings.TargetPorts = slices.Clone(next.Settings.TargetPorts)
 		if patch.Name != nil {
 			name := strings.TrimSpace(*patch.Name)
 			if name == "" {
 				return invalid("Название не может быть пустым")
 			}
-			st.Project.Name = name
+			next.Name = name
 		}
 		if patch.Description != nil {
-			st.Project.Description = strings.TrimSpace(*patch.Description)
+			next.Description = strings.TrimSpace(*patch.Description)
 		}
 		if s := patch.Settings; s != nil {
-			cur := &st.Project.Settings
+			cur := &next.Settings
 			if s.OverlapPolicy != nil {
 				if *s.OverlapPolicy != "first" && *s.OverlapPolicy != "last" {
 					return invalid("Политика перекрытий: first или last")
@@ -168,6 +172,7 @@ func (a *App) UpdateProject(id string, patch ProjectPatch) (model.Project, error
 				cur.TargetPorts = ports
 			}
 		}
+		st.Project = next
 		if reanalyze {
 			p.invalidate()
 		}

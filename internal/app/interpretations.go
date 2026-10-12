@@ -12,12 +12,22 @@ import (
 	"github.com/AVGsync/protolab/internal/store"
 )
 
+// withoutMeta drops the "$meta" object of an exported spec file (report.SpecFile),
+// so a downloaded interpretation can be pasted back or loaded into another
+// project, as `protolab apply --spec` accepts it.
+func withoutMeta(raw json.RawMessage) json.RawMessage {
+	if out, err := report.StripMeta(raw); err == nil {
+		return out
+	}
+	return raw // not an object: the strict parser reports it
+}
+
 // checkSpec decodes and validates a spec; invalid specs give a 422 with the issues.
 func checkSpec(raw json.RawMessage) (*spec.Spec, error) {
 	if len(raw) == 0 {
 		return nil, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid_spec", Message: "Спецификация не передана", Details: []spec.Issue{{Path: "$", Message: "Спецификация не передана", Severity: "error"}}}
 	}
-	s, res := spec.Parse(raw)
+	s, res := spec.Parse(withoutMeta(raw))
 	if !res.Valid || s == nil {
 		return nil, &Error{Status: http.StatusUnprocessableEntity, Code: "invalid_spec", Message: "Интерпретация содержит ошибки", Details: res.Issues}
 	}
@@ -215,7 +225,7 @@ func (a *App) ExportVersion(versionID string) ([]byte, string, error) {
 }
 
 func (a *App) ValidateSpec(raw json.RawMessage) spec.ValidationResult {
-	_, res := spec.Parse(raw)
+	_, res := spec.Parse(withoutMeta(raw))
 	if res.Issues == nil {
 		res.Issues = []spec.Issue{}
 	}

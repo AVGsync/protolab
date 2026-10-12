@@ -184,7 +184,7 @@ func TestVerifyUnknownRegions(t *testing.T) {
 			messages = append(messages, f.Message)
 		}
 	}
-	want := []string{"r: байты 1–3 не описаны полями", "r: последний байт не описаны полями", "r: байты 5–6 не описаны полями"}
+	want := []string{"r: байты 1–3 не описаны полями", "r: последний байт не описан полями", "r: байты 5–6 не описаны полями"}
 	if !reflect.DeepEqual(messages, want) {
 		t.Errorf("unknown regions = %q, want %q", messages, want)
 	}

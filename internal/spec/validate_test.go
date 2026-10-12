@@ -1,6 +1,7 @@
 package spec
 
 import (
+	"encoding/json"
 	"os"
 	"reflect"
 	"strings"
@@ -274,5 +275,27 @@ func TestParseHex(t *testing.T) {
 		if ok != (tt.want != nil) || !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("ParseHex(%q) = %X, %v; want %X", tt.in, got, ok, tt.want)
 		}
+	}
+}
+
+// Omitted lists are valid (warnings) but the canonical form carries arrays:
+// the API returns the spec to the UI, which iterates them without null checks.
+func TestParseNormalizesOmittedLists(t *testing.T) {
+	s, res := Parse([]byte(`{"format":"protolab/v1","protocol":"P","framing":{"kind":"fixed","size":4},"messages":[{"id":"m"}],"assertions":[{"id":"a","rule":"m","actionKind":"other"}]}`))
+	if s == nil || !res.Valid {
+		t.Fatalf("result = %+v", res)
+	}
+	out, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"match":[]`, `"fields":[]`, `"checks":[]`} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("%s: missing %s", out, want)
+		}
+	}
+	empty, _ := Parse([]byte(`{"format":"protolab/v1","protocol":"P","framing":{"kind":"fixed","size":4}}`))
+	if out, _ := json.Marshal(empty); !strings.Contains(string(out), `"messages":[]`) {
+		t.Errorf("spec without rules: %s", out)
 	}
 }

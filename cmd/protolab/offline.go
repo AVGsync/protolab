@@ -226,13 +226,17 @@ func runVerify(args []string) int {
 	}
 
 	roots := captureRoots(*base, dir)
-	settings := model.ProjectSettings{OverlapPolicy: ex.Settings.OverlapPolicy, ChecksumPolicy: "warn", TargetPorts: ex.Settings.TargetPorts}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	cache := map[string]*app.OfflineCapture{}
+	type analysisKey struct {
+		path              string
+		overlap, checksum string
+	}
+	cache := map[analysisKey]*app.OfflineCapture{}
 
 	failed := false
 	for _, c := range ex.Corpora {
+		settings := exampleSettings(ex, c)
 		var inputs []engine.SessionInput
 		problems := []string{}
 		for _, ref := range c.Sessions {
@@ -241,13 +245,14 @@ func runVerify(args []string) int {
 				problems = append(problems, "не найден файл "+ref.Capture)
 				continue
 			}
-			capture := cache[path]
+			key := analysisKey{path, settings.OverlapPolicy, settings.ChecksumPolicy}
+			capture := cache[key]
 			if capture == nil {
 				if capture, err = app.AnalyzeFile(ctx, path, settings, app.Limits{}); err != nil {
 					problems = append(problems, fmt.Sprintf("%s: %v", ref.Capture, err))
 					continue
 				}
-				cache[path] = capture
+				cache[key] = capture
 			}
 			if capture.SHA256 != ref.SHA256 {
 				problems = append(problems, fmt.Sprintf("%s: SHA-256 не совпадает с отчётом — запись изменена", ref.Capture))
@@ -283,6 +288,30 @@ func runVerify(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// exampleSettings are the reassembly settings a corpus of the examples file
+// was verified with: its own when recorded, else the file's. Files written
+// before the checksum policy was recorded were made with "warn".
+func exampleSettings(ex report.Examples, c report.CorpusExample) model.ProjectSettings {
+	es := ex.Settings
+	if c.Settings != nil {
+		es.OverlapPolicy, es.ChecksumPolicy = c.Settings.OverlapPolicy, c.Settings.ChecksumPolicy
+		if c.Settings.TargetPorts != nil {
+			es.TargetPorts = c.Settings.TargetPorts
+		}
+	}
+	out := model.ProjectSettings{OverlapPolicy: es.OverlapPolicy, ChecksumPolicy: es.ChecksumPolicy, TargetPorts: es.TargetPorts}
+	if out.OverlapPolicy == "" {
+		out.OverlapPolicy = "first"
+	}
+	if out.ChecksumPolicy == "" {
+		out.ChecksumPolicy = "warn"
+	}
+	if out.TargetPorts == nil {
+		out.TargetPorts = []int{}
+	}
+	return out
 }
 
 func short(h string) string {

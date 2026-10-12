@@ -106,15 +106,18 @@ func (m *Manager) run(ctx context.Context, e *entry, fn Func) {
 
 	m.mu.Lock()
 	switch {
-	case ctx.Err() != nil && (err == nil || errors.Is(err, context.Canceled)):
-		e.job.Status = StatusCancelled
-	case err != nil:
-		e.job.Status = StatusFailed
-		e.job.Error = err.Error()
-	default:
+	case err == nil:
+		// The body finished its work (and committed it) even if a cancellation
+		// arrived after its last check: reporting "cancelled" would contradict
+		// the stored result (a ready capture, a succeeded run).
 		e.job.Status = StatusSucceeded
 		e.job.Progress = 1
 		e.job.Result = result
+	case ctx.Err() != nil && errors.Is(err, context.Canceled):
+		e.job.Status = StatusCancelled
+	default:
+		e.job.Status = StatusFailed
+		e.job.Error = err.Error()
 	}
 	e.job.FinishedAt = model.Now()
 	e.job.Cancellable = false
@@ -194,7 +197,8 @@ func (m *Manager) Get(id string) (model.Job, error) {
 }
 
 // Cancel requests cancellation and waits until the job body has returned,
-// so the caller observes the final state.
+// so the caller observes the final state. A job that completed before it
+// noticed the request is reported with ErrNotCancellable and its final state.
 func (m *Manager) Cancel(id string) (model.Job, error) {
 	m.mu.Lock()
 	var target *entry
@@ -220,8 +224,13 @@ func (m *Manager) Cancel(id string) (model.Job, error) {
 	case <-target.done:
 	case <-time.After(10 * time.Second):
 		// The job ignores its context; report the current state.
+		return m.Get(id)
 	}
-	return m.Get(id)
+	j, err := m.Get(id)
+	if err == nil && j.Status != StatusCancelled {
+		return j, ErrNotCancellable
+	}
+	return j, err
 }
 
 // Wait blocks until all running jobs finished (used on shutdown and in tests).

@@ -101,12 +101,15 @@ export const systemHandlers = [
       commit: 'mock',
       buildDate: '2026-10-12',
       engineVersion: ENGINE_VERSION,
+      // The defaults of the Go backend (internal/app.DefaultLimits).
       limits: {
-        maxCaptureBytes: 100 * 1024 * 1024,
-        maxPackets: 250_000,
-        maxSessions: 1_000,
-        maxMessages: 100_000,
-        maxMessageBytes: 64 * 1024,
+        maxCaptureBytes: 512 * 1024 * 1024,
+        maxPackets: 2_000_000,
+        maxSessions: 20_000,
+        maxMessages: 200_000,
+        maxMessageBytes: 65_600,
+        maxStreamBytes: 64 * 1024 * 1024,
+        maxTotalStreamBytes: 1024 * 1024 * 1024,
       },
       runtime: {
         os: 'linux',

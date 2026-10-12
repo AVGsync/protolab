@@ -48,8 +48,10 @@ export function diffMs(fromIso: string, toIso: string): number {
 }
 
 export function formatDuration(ms: number): string {
+  // The backend reports whole milliseconds: 0 is "under a millisecond", not no time at all.
+  if (ms <= 0) return '< 1 мс';
   if (ms < 1) return `${(ms * 1000).toFixed(0)} мкс`;
-  if (ms < 1000) return `${ms.toFixed(ms < 10 ? 2 : 0)} мс`;
+  if (ms < 1000) return `${ms.toFixed(ms < 10 && !Number.isInteger(ms) ? 2 : 0)} мс`;
   const s = ms / 1000;
   if (s < 60) return `${s.toFixed(s < 10 ? 2 : 1)} с`;
   const m = Math.floor(s / 60);

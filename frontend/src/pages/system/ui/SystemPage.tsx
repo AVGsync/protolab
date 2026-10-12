@@ -35,6 +35,8 @@ export function SystemPage() {
                     ['TCP-сессий', formatNumber(data.limits.maxSessions)],
                     ['Сообщений', formatNumber(data.limits.maxMessages)],
                     ['Размер сообщения', formatBytes(data.limits.maxMessageBytes)],
+                    ['Поток одного направления', formatBytes(data.limits.maxStreamBytes)],
+                    ['Все потоки записи', formatBytes(data.limits.maxTotalStreamBytes)],
                   ]}
                 />
                 <p className="text-xs text-muted">Превышение предела обрабатывается явно, данные не обрезаются молча.</p>

@@ -74,6 +74,7 @@ func (a *App) addHypothesis(p *project, id string, in model.CreateHypothesisInpu
 }
 
 // UpdateHypothesis changes fields; a status change requires a note and is kept in the history.
+// Everything is validated before the first change, so a rejected request changes nothing.
 func (a *App) UpdateHypothesis(id string, in model.UpdateHypothesisInput) (model.Hypothesis, error) {
 	p, err := a.projectOf(id, "Гипотеза")
 	if err != nil {
@@ -86,22 +87,39 @@ func (a *App) UpdateHypothesis(id string, in model.UpdateHypothesisInput) (model
 			return notFound("Гипотеза")
 		}
 		h := &st.Hypotheses[i]
-		now := model.Now()
-		if in.Status != nil && *in.Status != h.Status {
+		statusChange := in.Status != nil && *in.Status != h.Status
+		note := strings.TrimSpace(in.Note)
+		if statusChange {
 			if !slices.Contains(hypothesisStatuses, *in.Status) {
 				return invalid("Неизвестный статус %q", *in.Status)
 			}
-			note := strings.TrimSpace(in.Note)
 			if note == "" {
 				return invalid("Укажите основание смены статуса")
 			}
+		}
+		if in.Title != nil && strings.TrimSpace(*in.Title) == "" {
+			return invalid("Формулировка не может быть пустой")
+		}
+		var obsIDs []string
+		if in.ObservationIDs != nil {
+			obsIDs = []string{}
+			for _, oid := range in.ObservationIDs {
+				if slices.Contains(obsIDs, oid) {
+					continue
+				}
+				if findIndex(st.Observations, func(o *model.Observation) bool { return o.ID == oid }) < 0 {
+					return invalid("Наблюдение %s не найдено", oid)
+				}
+				obsIDs = append(obsIDs, oid)
+			}
+		}
+
+		now := model.Now()
+		if statusChange {
 			h.History = append(h.History, model.HypothesisEvent{At: now, Status: *in.Status, Note: note})
 			h.Status = *in.Status
 		}
 		if in.Title != nil {
-			if strings.TrimSpace(*in.Title) == "" {
-				return invalid("Формулировка не может быть пустой")
-			}
 			h.Title = strings.TrimSpace(*in.Title)
 		}
 		if in.Statement != nil {
@@ -110,8 +128,19 @@ func (a *App) UpdateHypothesis(id string, in model.UpdateHypothesisInput) (model
 		if in.Alternatives != nil {
 			h.Alternatives = in.Alternatives
 		}
-		if in.ObservationIDs != nil {
-			h.ObservationIDs = in.ObservationIDs
+		if obsIDs != nil {
+			// The link is kept on both sides: observations?hypothesisId= reads the observation side.
+			for j := range st.Observations {
+				o := &st.Observations[j]
+				linked, has := slices.Contains(obsIDs, o.ID), slices.Contains(o.HypothesisIDs, h.ID)
+				switch {
+				case linked && !has:
+					o.HypothesisIDs = append(o.HypothesisIDs, h.ID)
+				case !linked && has:
+					o.HypothesisIDs = slices.DeleteFunc(o.HypothesisIDs, func(x string) bool { return x == h.ID })
+				}
+			}
+			h.ObservationIDs = obsIDs
 		}
 		if in.Counterexamples != nil {
 			h.Counterexamples = in.Counterexamples

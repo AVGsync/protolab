@@ -78,6 +78,26 @@ func TestCancel(t *testing.T) {
 	}
 }
 
+// A body that already committed its work when the cancellation arrived is
+// succeeded, not cancelled: the job state must agree with the stored result.
+func TestCancelAfterCommit(t *testing.T) {
+	m := NewManager(context.Background(), nil)
+	started := make(chan struct{})
+	j := m.Start("p", "k", "late", func(ctx context.Context, p Progress) (*model.JobResult, error) {
+		close(started)
+		<-ctx.Done() // the work is committed; the request came too late to stop it
+		return &model.JobResult{Type: "run", ID: "r1"}, nil
+	})
+	<-started
+	got, err := m.Cancel(j.ID)
+	if !errors.Is(err, ErrNotCancellable) {
+		t.Fatalf("cancel of a committed job: err = %v, want ErrNotCancellable", err)
+	}
+	if got.Status != StatusSucceeded || got.Result == nil || got.Result.ID != "r1" || got.Progress != 1 {
+		t.Fatalf("committed job reported as %+v", got)
+	}
+}
+
 func TestListNewestFirstAndRetention(t *testing.T) {
 	m := NewManager(context.Background(), nil)
 	var last string

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 
 export type Theme = 'dark' | 'light';
 
-/** Shared with the inline script in index.html that applies the theme before first paint. */
+/** Shared with public/theme.js, which applies the theme before first paint. */
 const STORAGE_KEY = 'protolab-theme';
 
 const listeners = new Set<() => void>();

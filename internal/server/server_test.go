@@ -156,6 +156,9 @@ func TestStaticSPA(t *testing.T) {
 	if rec.Code != 200 || !strings.Contains(rec.Header().Get("Cache-Control"), "immutable") {
 		t.Fatalf("asset: %d %q", rec.Code, rec.Header().Get("Cache-Control"))
 	}
+	if rec := do(h, "GET", "/favicon.svg", "", nil); rec.Code != 200 || rec.Header().Get("Cache-Control") != "no-cache" {
+		t.Fatalf("unhashed file must revalidate: %d %q", rec.Code, rec.Header().Get("Cache-Control"))
+	}
 	if rec := do(h, "GET", "/assets/missing.js", "", nil); rec.Code != 404 {
 		t.Fatalf("missing asset must 404, got %d", rec.Code)
 	}

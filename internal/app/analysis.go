@@ -417,6 +417,7 @@ var captureLevelMessage = map[string]string{
 	"checksum_offload":  "Неверные контрольные суммы TCP (вероятно checksum offloading)",
 	"checksum_error":    "Неверные контрольные суммы TCP у отдельных пакетов (вероятно повреждение)",
 	"stream_too_large":  "Потоки превышают предел размера: часть байтов не сохранена",
+	"reassembly_failed": "Сборка части соединений не удалась: их пакеты сохранены, байты потоков не восстановлены",
 }
 
 // aggregateSessionDiagnostics summarises session diagnostics per code for the capture.

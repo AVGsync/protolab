@@ -184,5 +184,29 @@ func Decode(raw []byte) (*Spec, error) {
 	if _, err := dec.Token(); err != io.EOF {
 		return nil, errors.New("unexpected data after the JSON object")
 	}
+	s.Normalize()
 	return &s, nil
+}
+
+// Normalize turns omitted lists into empty ones: a spec without rules or a rule
+// without match/fields is valid (a warning), and the canonical form (and so the
+// hash and the API) always carries arrays, never null.
+func (s *Spec) Normalize() {
+	if s.Messages == nil {
+		s.Messages = []MessageRule{}
+	}
+	for i := range s.Messages {
+		r := &s.Messages[i]
+		if r.Match == nil {
+			r.Match = []MatchCondition{}
+		}
+		if r.Fields == nil {
+			r.Fields = []FieldRule{}
+		}
+	}
+	for i := range s.Assertions {
+		if s.Assertions[i].Checks == nil {
+			s.Assertions[i].Checks = []Check{}
+		}
+	}
 }

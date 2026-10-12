@@ -10,6 +10,10 @@ export interface SystemInfo {
     maxSessions: number;
     maxMessages: number;
     maxMessageBytes: number;
+    /** One reassembled direction of a TCP session. */
+    maxStreamBytes: number;
+    /** All reassembled directions of one capture together. */
+    maxTotalStreamBytes: number;
   };
   runtime: {
     os: string;

@@ -7,6 +7,7 @@ const FLAGS: Record<SegmentFlag, { tone: Tone; label: string; title: string }> =
   overlap_conflict: { tone: 'danger', label: 'конфликт', title: 'Повтор с другими байтами: выбор по политике проекта' },
   checksum_warning: { tone: 'muted', label: 'checksum', title: 'Неверная контрольная сумма TCP (возможен offloading)' },
   truncated: { tone: 'warn', label: 'усечён', title: 'Пакет обрезан snaplen: хвост неизвестен' },
+  keep_alive: { tone: 'muted', label: 'keep-alive', title: 'Проба TCP keep-alive: её байт не относится к данным и в поток не добавлен' },
 };
 
 export function SegmentFlagMark({ flag }: { flag: SegmentFlag }) {

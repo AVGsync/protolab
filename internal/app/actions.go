@@ -70,6 +70,23 @@ func autoLink(sessions []*sessionData, at time.Time) []model.ActionLink {
 	return []model.ActionLink{{SessionID: best.dto.ID, Method: "auto_time", DeltaMs: &ms}}
 }
 
+// linkActions links actions that have no session yet to the sessions of a
+// newly indexed capture, by the same time window: an action log is often
+// imported before the capture of the same experiment.
+func linkActions(actions []model.ActionEntry, sessions []*sessionData) {
+	for i := range actions {
+		act := &actions[i]
+		if len(act.Links) > 0 {
+			continue
+		}
+		at, err := parseActionTime(act.Timestamp)
+		if err != nil {
+			continue
+		}
+		act.Links = autoLink(sessions, at)
+	}
+}
+
 func absDur(d time.Duration) time.Duration {
 	if d < 0 {
 		return -d

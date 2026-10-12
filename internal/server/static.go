@@ -49,6 +49,9 @@ func (s *server) static() http.Handler {
 		}
 		if strings.HasPrefix(name, "assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			// Unhashed files (theme.js, favicon) change between versions under the same name.
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		files.ServeHTTP(w, r)
 	})

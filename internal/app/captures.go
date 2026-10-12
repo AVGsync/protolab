@@ -266,6 +266,7 @@ func (a *App) indexCapture(ctx context.Context, p *project, captureID string, pr
 	applyAnalysis(c, res)
 	c.Status = "ready"
 	p.setAnalysis(captureID, res)
+	linkActions(p.st.Actions, res.sessions)
 	p.rev++
 	if err := p.save(); err != nil {
 		return nil, err
