@@ -1,3 +1,4 @@
 export { messageApi, messageQueries } from './api/messageApi';
+export { fieldRange, findFieldAt, findMessageAt, firstMessageEndingAfter, sortByOffset, type FieldLink } from './model/lookup';
 export type { FieldStatus, MeaningStatus, Message, MessageStatus, ParsedField, ProjectMessagesQuery } from './model/types';
-export { MeaningBadge, MessageStatusBadge } from './ui/MessageBadges';
+export { MeaningMark, MessageStatusMark } from './ui/MessageMarks';

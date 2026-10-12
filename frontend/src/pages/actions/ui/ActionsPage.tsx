@@ -1,11 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Link2 } from 'lucide-react';
 import { Link } from 'react-router';
 import { ACTION_KIND_LABEL, ActionParams, actionQueries } from '@/entities/action';
 import { ImportActionsButton } from '@/features/import-actions';
 import { routes } from '@/shared/config';
 import { formatDuration, formatTimestamp, useRequiredParams } from '@/shared/lib';
-import { Badge, Card, Callout, EmptyState, ErrorState, Loader, Page, PageHeader, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
+import { Disclosure, EmptyState, ErrorState, Loader, Page, PageHeader, Pane, Status, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
 export function ActionsPage() {
   const { projectId } = useRequiredParams('projectId');
@@ -15,18 +14,19 @@ export function ActionsPage() {
     <Page>
       <PageHeader
         title="Журнал действий"
-        description="Условия эксперимента: что делал исследователь в штатном клиенте и что увидел. Действия связываются с сессиями по времени и используются в проверках интерпретации."
         actions={<ImportActionsButton projectId={projectId} />}
       />
-      <Callout tone="info" className="mb-4" title="Формат импорта">
-        CSV: <code className="font-mono text-[11.5px]">timestamp,kind,label,params,result</code>, где params —{' '}
-        <code className="font-mono text-[11.5px]">param=setpoint;value=21</code> или JSON. Также принимается JSON-массив действий.
-      </Callout>
+      <Disclosure summary="Формат импорта" className="mb-4">
+        <p className="border-l border-line pl-4 text-xs text-muted">
+          CSV: <code className="font-mono text-2xs text-fg">timestamp,kind,label,params,result</code>, где params —{' '}
+          <code className="font-mono text-2xs text-fg">param=setpoint;value=21</code> или JSON. Также принимается JSON-массив действий.
+        </p>
+      </Disclosure>
       {isLoading && <Loader />}
       {error && <ErrorState error={error} onRetry={refetch} />}
-      {data && data.items.length === 0 && <EmptyState icon={<ClipboardList size={20} />} title="Журнал пуст" description="Импортируйте журнал действий из CSV или JSON." />}
+      {data && data.items.length === 0 && <EmptyState title="Журнал пуст" description="Импортируйте журнал действий из CSV или JSON." />}
       {data && data.items.length > 0 && (
-        <Card>
+        <Pane>
           <Table>
             <THead>
               <tr>
@@ -40,21 +40,19 @@ export function ActionsPage() {
             <TBody>
               {data.items.map((a) => (
                 <Tr key={a.id} className="align-top">
-                  <Td className="font-mono text-[12px] whitespace-nowrap text-muted">
-                    {a.timestamp.slice(0, 10)}
-                    <br />
-                    {formatTimestamp(a.timestamp, 3)}
+                  <Td className="font-mono text-xs whitespace-nowrap text-muted">
+                    {a.timestamp.slice(0, 10)} {formatTimestamp(a.timestamp, 3)}
                   </Td>
                   <Td>
                     <p className="font-medium">{a.label}</p>
-                    <p className="text-[11px] text-subtle">
+                    <p className="text-2xs text-muted">
                       {ACTION_KIND_LABEL[a.kind]} · {a.source === 'import' ? 'импорт' : 'вручную'}
                     </p>
                   </Td>
                   <Td>
                     <ActionParams params={a.params} />
                   </Td>
-                  <Td className="text-[12.5px]">
+                  <Td className="text-xs">
                     {a.result ?? '—'}
                     {a.observed && (
                       <div className="mt-1">
@@ -64,18 +62,17 @@ export function ActionsPage() {
                   </Td>
                   <Td>
                     {a.links.length === 0 ? (
-                      <Badge tone="warning">не связано</Badge>
+                      <Status tone="warn">не связано</Status>
                     ) : (
                       a.links.map((l) => (
                         <Link
                           key={l.sessionId}
                           to={routes.session(projectId, l.sessionId)}
-                          className="flex items-center gap-1 font-mono text-[12px] text-info hover:underline"
+                          className="link flex items-center gap-2 font-mono text-xs"
                         >
-                          <Link2 size={11} />
                           {l.sessionId}
-                          <span className="text-[10.5px] text-subtle">
-                            {l.method === 'auto_time' ? `по времени, Δ ${formatDuration(l.deltaMs ?? 0)}` : 'вручную'}
+                          <span className="text-2xs text-muted">
+                            {l.method === 'auto_time' ? `по времени, сдвиг ${formatDuration(l.deltaMs ?? 0)}` : 'вручную'}
                           </span>
                         </Link>
                       ))
@@ -85,7 +82,7 @@ export function ActionsPage() {
               ))}
             </TBody>
           </Table>
-        </Card>
+        </Pane>
       )}
     </Page>
   );

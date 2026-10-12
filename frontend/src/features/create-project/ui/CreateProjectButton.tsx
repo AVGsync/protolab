@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { projectApi, projectKeys } from '@/entities/project';
@@ -36,14 +35,13 @@ export function CreateProjectButton() {
 
   return (
     <>
-      <Button variant="primary" icon={<Plus size={14} />} onClick={() => setOpen(true)}>
+      <Button variant="primary" onClick={() => setOpen(true)}>
         Новый проект
       </Button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
         title="Новый проект исследования"
-        description="Проект хранит исходные записи, интерпретации, наблюдения и результаты проверок."
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>

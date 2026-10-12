@@ -1,4 +1,3 @@
-import { MapPin } from 'lucide-react';
 import { Link } from 'react-router';
 import type { SourceRef } from '@/shared/api';
 import { routes } from '@/shared/config';
@@ -13,10 +12,9 @@ export function SourceRefLink({ projectId, source, versionId }: { projectId: str
         sel: { offset: source.offset, length: source.length },
         v: versionId,
       })}
-      className="inline-flex items-center gap-1 font-mono text-[11.5px] text-info hover:underline"
+      className="link font-mono text-xs whitespace-nowrap"
       title={`Захват ${source.captureId} (sha256 ${source.captureSha256.slice(0, 12)}…), пакеты #${source.packetNumbers.join(', #')}`}
     >
-      <MapPin size={11} />
       {source.sessionId}/{source.direction} {formatRange(source)}
     </Link>
   );

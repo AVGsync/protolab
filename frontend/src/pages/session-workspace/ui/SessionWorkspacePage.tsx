@@ -1,29 +1,38 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Binary, Search } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
-import { DiagnosticList } from '@/entities/capture';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { interpretationQueries } from '@/entities/interpretation';
-import { messageQueries, type Message } from '@/entities/message';
-import { DIRECTION_LABEL, EndpointPair, SessionFlagBadges, SessionStatusBadge, sessionQueries } from '@/entities/session';
+import {
+  fieldRange,
+  findFieldAt,
+  findMessageAt,
+  messageQueries,
+  sortByOffset,
+  type FieldLink,
+  type Message,
+} from '@/entities/message';
+import { sessionQueries } from '@/entities/session';
 import { streamQueries, type Packet } from '@/entities/stream';
+import { StartRunDialog } from '@/features/run-verification';
 import { ValueSearch } from '@/features/value-search';
-import { ByteInspector } from '@/widgets/byte-inspector';
-import { HexViewer, type HexHighlight } from '@/widgets/hex-viewer';
-import { FieldTable, fieldColor, MessageList } from '@/widgets/message-panel';
+import { AnnotationLanes } from '@/widgets/annotation-lanes';
+import { ByteReadout, describeSelection } from '@/widgets/byte-readout';
+import { HexViewer } from '@/widgets/hex-viewer';
+import { FieldTable, MessageList } from '@/widgets/message-panel';
 import { PacketTable } from '@/widgets/packet-table';
+import { FooterReadout, useContextKeys } from '@/widgets/soft-keys';
 import type { Direction } from '@/shared/api';
 import { routes } from '@/shared/config';
-import { buildMask, cn, parseRange, serializeRange, useRequiredParams, type ByteRange } from '@/shared/lib';
-import { Badge, Callout, EmptyState, ErrorState, Loader, Select, Tabs } from '@/shared/ui';
+import { buildMask, parseRange, serializeRange, useRequiredParams, type ByteRange } from '@/shared/lib';
+import { EmptyState, ErrorState, Loader, Status, Tabs } from '@/shared/ui';
+import { ContextBar, NO_VERSION } from './ContextBar';
 
-type PanelTab = 'inspector' | 'messages' | 'packets' | 'search';
-
-const NO_VERSION = 'none';
+type PaneTab = 'messages' | 'packets' | 'search';
 
 export function SessionWorkspacePage() {
   const { projectId, sessionId } = useRequiredParams('projectId', 'sessionId');
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const dir: Direction = params.get('dir') === 's2c' ? 's2c' : 'c2s';
   const selection = parseRange(params.get('sel'));
 
@@ -38,10 +47,14 @@ export function SessionWorkspacePage() {
   const version = useQuery({ ...interpretationQueries.version(versionId), enabled: hasVersion });
   const messages = useQuery({ ...messageQueries.bySession(sessionId, versionId), enabled: hasVersion });
 
-  const [tab, setTab] = useState<PanelTab>(selection ? 'inspector' : 'messages');
+  const [tab, setTab] = useState<PaneTab>('messages');
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [hits, setHits] = useState<ByteRange[]>([]);
   const [scrollTo, setScrollTo] = useState<{ offset: number; nonce: number }>();
+  const [hover, setHover] = useState<number | null>(null);
+  const [rowLink, setRowLink] = useState<FieldLink | null>(null);
+  const [runOpen, setRunOpen] = useState(false);
+  const versionSelect = useRef<HTMLSelectElement>(null);
 
   const update = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
@@ -52,14 +65,23 @@ export function SessionWorkspacePage() {
     setParams(next, { replace: true });
   };
 
+  const unknownMask = useMemo(() => buildMask(bytes.data?.length ?? 0, meta.data?.gaps ?? []), [bytes.data, meta.data]);
+  const allMessages = useMemo(() => messages.data?.items ?? [], [messages.data]);
+  const streamMessages = useMemo(() => sortByOffset(allMessages.filter((m) => m.direction === dir)), [allMessages, dir]);
+
+  // Bytes and messages are linked both ways: a click in the stream makes the message under it the active one.
   const select = (range: ByteRange | null, opts: { dir?: Direction; scroll?: boolean } = {}) => {
     const targetDir = opts.dir ?? dir;
     if (targetDir !== dir) setHits([]);
     update({ dir: targetDir, sel: range ? serializeRange(range) : null });
     if (range && opts.scroll) setScrollTo({ offset: range.offset, nonce: Date.now() });
+    if (range && targetDir === dir) {
+      const m = findMessageAt(streamMessages, range.offset);
+      if (m) setActiveIndex(m.index);
+    }
   };
 
-  // Deep links (from findings and observations) scroll to the referenced bytes.
+  // Deep links (from findings and observations) scroll to the referenced bytes once the stream is there.
   const initialSel = params.get('sel');
   useEffect(() => {
     const r = parseRange(initialSel);
@@ -67,24 +89,26 @@ export function SessionWorkspacePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only once bytes arrive
   }, [bytes.data]);
 
-  const unknownMask = useMemo(() => buildMask(bytes.data?.length ?? 0, meta.data?.gaps ?? []), [bytes.data, meta.data]);
+  // The active message drives the lanes; before anything is chosen, the first message of the stream.
+  const active = streamMessages.find((m) => m.index === activeIndex) ?? streamMessages[0];
 
-  const allMessages = useMemo(() => messages.data?.items ?? [], [messages.data]);
-  const messageStarts = useMemo(() => allMessages.filter((m) => m.direction === dir).map((m) => m.offset), [allMessages, dir]);
-  const active = allMessages.find((m) => m.index === activeIndex && m.direction === dir);
+  const hoverLink = useMemo<FieldLink | null>(() => {
+    if (hover === null) return null;
+    const m = findMessageAt(streamMessages, hover);
+    const f = m && findFieldAt(m, hover - m.offset);
+    return m && f ? { messageIndex: m.index, path: f.path, range: fieldRange(m, f) } : null;
+  }, [hover, streamMessages]);
+  const link = hoverLink ?? rowLink;
+  const cursor = hover ?? selection?.offset ?? null;
 
-  const highlights = useMemo(() => {
-    const list: HexHighlight[] = hits.map((h) => ({ ...h, color: '#facc15', label: 'совпадение поиска' }));
-    active?.fields.forEach((f, i) =>
-      list.push({
-        offset: active.offset + f.offset,
-        length: f.length,
-        color: fieldColor(i),
-        label: `${active.ruleId}.${f.name} = ${f.display}`,
-      }),
-    );
-    return list;
-  }, [hits, active]);
+  const details = useMemo(
+    () =>
+      selection && session.data && bytes.data && meta.data
+        ? describeSelection(session.data, dir, bytes.data, unknownMask, meta.data.segments, selection)
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the selection is a new object on every render; its parts decide
+    [selection?.offset, selection?.length, session.data, dir, bytes.data, meta.data, unknownMask],
+  );
 
   // Field colours stay visible: the message is scrolled to, not selected as a whole.
   const onMessage = (m: Message) => {
@@ -97,134 +121,124 @@ export function SessionWorkspacePage() {
   const onPacket = (p: Packet) => {
     if (p.streamOffset === null) return;
     select({ offset: p.streamOffset, length: p.payloadLength }, { dir: p.direction, scroll: true });
-    setTab('inspector');
   };
+
+  useContextKeys([
+    { key: '/', label: 'поиск', description: 'Поиск значения в потоке', onPress: () => setTab('search') },
+    {
+      key: 'D',
+      label: 'направление',
+      description: 'Переключить направление потока',
+      onPress: () => select(null, { dir: dir === 'c2s' ? 's2c' : 'c2s' }),
+    },
+    {
+      key: 'V',
+      label: 'версия',
+      description: 'Выбрать интерпретацию для разбора потока',
+      onPress: () => {
+        const el = versionSelect.current;
+        el?.focus();
+        el?.showPicker?.();
+      },
+    },
+    { key: 'C', label: 'сравнить', description: 'Сравнение примеров', onPress: () => navigate(routes.compare(projectId)) },
+    {
+      key: 'R',
+      label: 'проверить',
+      description: 'Проверить интерпретацию на корпусе',
+      disabled: !hasVersion,
+      onPress: () => hasVersion && setRunOpen(true),
+    },
+  ]);
 
   if (session.isLoading) return <Loader />;
   if (session.error || !session.data) return <ErrorState error={session.error} onRetry={session.refetch} />;
   const s = session.data;
-  const counts = allMessages.reduce<Record<string, number>>((acc, m) => ({ ...acc, [m.status]: (acc[m.status] ?? 0) + 1 }), {});
+  const latest = interpretations.data?.items.find((i) => i.latestVersionId === versionId);
+  const staleVersion = hasVersion && !latest && version.data ? version.data.version : undefined;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
-        <Link to={routes.sessions(projectId)} className="text-muted hover:text-fg" title="К списку сессий">
-          <ArrowLeft size={16} />
-        </Link>
-        <span className="font-mono text-[13px] font-semibold">{s.id}</span>
-        <EndpointPair client={s.client} server={s.server} />
-        <SessionStatusBadge status={s.status} />
-        <SessionFlagBadges flags={s.flags} roles={s.roles} />
-
-        <div className="ml-auto flex items-center gap-2">
-          <div className="flex rounded-md border border-line bg-bg p-0.5 text-xs">
-            {(['c2s', 's2c'] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => select(null, { dir: d })}
-                className={cn('rounded px-2.5 py-1', dir === d ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg')}
-              >
-                {DIRECTION_LABEL[d]}
-                <span className="ml-1.5 font-mono text-[10.5px] text-subtle">{s.bytes[d]} Б</span>
-              </button>
-            ))}
-          </div>
-          <Select
-            value={versionId}
-            onChange={(e) => {
-              setActiveIndex(null);
-              update({ v: e.target.value });
-            }}
-            className="w-64"
-            title="Интерпретация для кадрирования и разбора"
-          >
-            <option value={NO_VERSION}>Без интерпретации (сырой поток)</option>
-            {interpretations.data?.items.map((i) => (
-              <option key={i.id} value={i.latestVersionId}>
-                {i.name} v{i.latestVersion} · актуальная
-              </option>
-            ))}
-            {version.data && !interpretations.data?.items.some((i) => i.latestVersionId === versionId) && (
-              <option value={versionId}>v{version.data.version} (устаревшая)</option>
-            )}
-          </Select>
-        </div>
-      </div>
-
-      {s.diagnostics.length > 0 && (
-        <Callout tone="warning" className="mx-4 mt-3" title="Неполные или неоднозначные данные">
-          <DiagnosticList items={s.diagnostics} className="mt-1" />
-        </Callout>
-      )}
+    <div className="flex h-full min-h-0 flex-col">
+      <ContextBar
+        projectId={projectId}
+        session={s}
+        direction={dir}
+        onDirection={(d) => select(null, { dir: d })}
+        interpretations={interpretations.data?.items ?? []}
+        versionId={versionId}
+        staleVersion={staleVersion}
+        onVersion={(v) => {
+          setActiveIndex(null);
+          update({ v });
+        }}
+        versionRef={versionSelect}
+        selection={details}
+      />
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col border-r border-line">
+          {active && version.data && bytes.data && meta.data && (
+            <AnnotationLanes
+              message={active}
+              segments={meta.data.segments}
+              gaps={meta.data.gaps}
+              framing={version.data.spec.framing}
+              channel={dir}
+              selection={selection}
+              link={link}
+              onSelect={(r) => select(r, { scroll: true })}
+              onLink={setRowLink}
+            />
+          )}
           {meta.data && !meta.data.startKnown && (
-            <p className="border-b border-line bg-warning/8 px-4 py-1.5 text-xs text-warning">
-              Начало потока не захвачено: смещение 0 соответствует первому полученному байту, а не началу соединения.
+            <p className="border-b border-line px-4 py-1.5 text-xs text-muted">
+              <Status tone="warn">Начало потока не захвачено: смещение 0 это первый полученный байт, а не начало соединения.</Status>
             </p>
           )}
           {bytes.isLoading || meta.isLoading ? (
             <Loader />
-          ) : bytes.error || meta.error ? (
+          ) : bytes.error || meta.error || !bytes.data || !meta.data ? (
             <ErrorState error={bytes.error ?? meta.error} />
           ) : (
             <HexViewer
               className="min-h-0 flex-1"
-              bytes={bytes.data!}
+              bytes={bytes.data}
               unknownMask={unknownMask}
-              segments={meta.data!.segments}
-              messageStarts={messageStarts}
-              highlights={highlights}
+              gaps={meta.data.gaps}
+              segments={meta.data.segments}
+              messages={streamMessages}
+              activeMessage={active?.index}
+              hits={hits}
               selection={selection}
-              onSelectionChange={(r) => {
-                select(r);
-                setTab('inspector');
-              }}
+              link={link?.range}
+              cursor={cursor}
+              channel={dir}
+              onSelectionChange={(r) => select(r)}
+              onCursorChange={setHover}
               scrollTo={scrollTo}
             />
           )}
-          <div className="flex flex-wrap items-center gap-3 border-t border-line bg-surface px-4 py-1.5 text-[11px] text-muted">
-            <Legend className="bg-white/[0.06]" label="чередование TCP-сегментов" />
-            <Legend className="shadow-[inset_2px_0_0_var(--color-glow)]" label="начало сообщения" />
-            <Legend className="bg-hatch" label="неизвестные байты" />
-            <Legend className="bg-accent/50" label="выделение" />
-          </div>
         </div>
 
-        <aside className="flex w-[480px] shrink-0 flex-col border-l border-line bg-surface">
-          <Tabs<PanelTab>
+        <aside className="flex w-[420px] shrink-0 flex-col bg-surface">
+          <Tabs<PaneTab>
             value={tab}
             onChange={setTab}
             items={[
-              { id: 'inspector', label: 'Инспектор', icon: <Binary size={13} /> },
-              { id: 'messages', label: 'Сообщения', badge: hasVersion ? allMessages.length : undefined },
-              { id: 'packets', label: 'Пакеты', badge: packets.data?.total },
-              { id: 'search', label: 'Поиск', icon: <Search size={13} />, badge: hits.length || undefined },
+              { id: 'messages', label: 'Сообщения', count: hasVersion ? allMessages.length : undefined },
+              { id: 'packets', label: 'Пакеты', count: packets.data?.total },
+              { id: 'search', label: 'Поиск', count: hits.length || undefined },
             ]}
           />
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {tab === 'inspector' && bytes.data && meta.data && (
-              <ByteInspector
-                projectId={projectId}
-                session={s}
-                direction={dir}
-                bytes={bytes.data}
-                unknownMask={unknownMask}
-                segments={meta.data.segments}
-                selection={selection}
-              />
-            )}
-
+          <div className="flex min-h-0 flex-1 flex-col">
             {tab === 'messages' &&
               (!hasVersion ? (
                 <EmptyState
                   title="Сообщения не выделены"
-                  description="Граница TCP-пакета не определяет границу сообщения. Выберите интерпретацию, чтобы применить правила кадрирования."
+                  description="Граница TCP-пакета не определяет границу сообщения. Выберите интерпретацию для кадрирования."
                   action={
-                    <Link to={routes.interpretations(projectId)} className="text-xs text-info hover:underline">
-                      К интерпретациям
+                    <Link to={routes.spec(projectId)} className="link text-xs">
+                      К спецификации
                     </Link>
                   }
                 />
@@ -233,54 +247,45 @@ export function SessionWorkspacePage() {
               ) : messages.error ? (
                 <ErrorState error={messages.error} onRetry={messages.refetch} />
               ) : (
-                <div className="flex flex-col">
-                  <div className="flex flex-wrap gap-1.5 border-b border-line px-3 py-2">
-                    {Object.entries(counts).map(([status, n]) => (
-                      <Badge key={status} tone={status === 'ok' ? 'success' : status === 'violation' ? 'danger' : 'warning'}>
-                        {status}: {n}
-                      </Badge>
-                    ))}
-                    {version.data && <span className="ml-auto font-mono text-[11px] text-subtle">v{version.data.version}</span>}
-                  </div>
-                  <MessageList messages={allMessages} activeIndex={activeIndex} onSelect={onMessage} />
+                <>
+                  <MessageList
+                    messages={allMessages}
+                    activeIndex={active?.index ?? null}
+                    onSelect={onMessage}
+                    className="max-h-[40vh] shrink-0 border-b border-line"
+                  />
                   {active && (
-                    <div className="border-t border-line p-3">
-                      <p className="mb-2 text-[12px] font-semibold">
-                        #{active.index} {active.ruleTitle ?? active.ruleId}
-                      </p>
-                      <FieldTable
-                        message={active}
-                        onSelectRange={(o, len) => select({ offset: active.offset + o, length: len }, { scroll: true })}
-                      />
+                    <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                      <h4 className="mb-1.5 text-sm font-semibold">
+                        Поля <span className="font-mono font-normal text-muted">#{active.index}</span>
+                      </h4>
+                      <FieldTable message={active} selection={selection} link={link} onSelectRange={(r) => select(r, { scroll: true })} onLink={setRowLink} />
                     </div>
                   )}
-                </div>
+                </>
               ))}
 
-            {tab === 'packets' && packets.data && <PacketTable packets={packets.data.items} onSelect={onPacket} />}
+            {tab === 'packets' && packets.data && (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <PacketTable packets={packets.data.items} onSelect={onPacket} />
+              </div>
+            )}
 
             {tab === 'search' && bytes.data && (
-              <div className="p-4">
-                <ValueSearch
-                  bytes={bytes.data}
-                  unknownMask={unknownMask}
-                  onHits={setHits}
-                  onSelect={(r) => select(r, { scroll: true })}
-                />
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <ValueSearch bytes={bytes.data} unknownMask={unknownMask} onHits={setHits} onSelect={(r) => select(r, { scroll: true })} />
               </div>
             )}
           </div>
         </aside>
       </div>
-    </div>
-  );
-}
 
-function Legend({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn('inline-block h-3 w-4 rounded-sm border border-line', className)} />
-      {label}
-    </span>
+      {bytes.data && meta.data && (
+        <FooterReadout>
+          <ByteReadout bytes={bytes.data} unknownMask={unknownMask} segments={meta.data.segments} selection={selection} cursor={cursor} />
+        </FooterReadout>
+      )}
+      <StartRunDialog projectId={projectId} open={runOpen} onClose={() => setRunOpen(false)} defaultVersionId={hasVersion ? versionId : undefined} />
+    </div>
   );
 }

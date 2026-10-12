@@ -1,3 +1,3 @@
 export { FindingsTable, type FindingsTableProps } from './ui/FindingsTable';
 export { RuleStatsTable } from './ui/RuleStatsTable';
-export { RunSummaryCards } from './ui/RunSummaryCards';
+export { RunReadout } from './ui/RunReadout';

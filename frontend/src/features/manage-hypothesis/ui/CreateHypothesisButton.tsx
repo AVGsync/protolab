@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Lightbulb } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { hypothesisApi, type CreateHypothesisInput } from '@/entities/hypothesis';
 import { projectKeys } from '@/entities/project';
@@ -61,7 +60,6 @@ export function CreateHypothesisButton({
       <Button
         size={size}
         variant={variant}
-        icon={<Lightbulb size={14} />}
         onClick={() => {
           reset();
           setOpen(true);

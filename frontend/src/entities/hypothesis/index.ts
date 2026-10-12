@@ -8,4 +8,4 @@ export type {
   HypothesisStatus,
   UpdateHypothesisInput,
 } from './model/types';
-export { HypothesisStatusBadge } from './ui/HypothesisStatusBadge';
+export { HypothesisStatusMark } from './ui/HypothesisStatusMark';

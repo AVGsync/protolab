@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { interpretationQueries } from '@/entities/interpretation';
 import { jobKeys } from '@/entities/job';
 import { projectKeys } from '@/entities/project';
 import { reportApi } from '@/entities/report';
 import { verificationQueries } from '@/entities/verification';
-import { Badge, Button, Checkbox, Field, Input, Modal, Select, toast } from '@/shared/ui';
+import { Button, Checkbox, Field, Input, Modal, Select, Status, toast } from '@/shared/ui';
 
 export function GenerateReportButton({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
@@ -44,14 +43,13 @@ export function GenerateReportButton({ projectId }: { projectId: string }) {
 
   return (
     <>
-      <Button variant="primary" icon={<FileText size={14} />} onClick={() => setOpen(true)}>
+      <Button variant="primary" onClick={() => setOpen(true)}>
         Сформировать отчёт
       </Button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
         title="Отчёт об исследовании"
-        description="Читаемый отчёт, машиночитаемая интерпретация, примеры входных данных с ожидаемыми результатами и команда повторного применения."
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -101,8 +99,8 @@ export function GenerateReportButton({ projectId }: { projectId: string }) {
             </Field>
           </div>
           <div>
-            <p className="mb-2 text-xs font-medium text-muted">Проверки, на которые опирается отчёт</p>
-            {versionRuns.length === 0 && <p className="text-xs text-warning">Для этой версии нет завершённых проверок — выводы будут без подтверждения.</p>}
+            <p className="mb-2 text-xs text-muted">Проверки, на которые опирается отчёт</p>
+            {versionRuns.length === 0 && <p className="text-xs text-warn">Для этой версии нет завершённых проверок — выводы будут без подтверждения.</p>}
             <div className="flex flex-col gap-1.5">
               {versionRuns.map((r) => (
                 <div key={r.id} className="flex items-center gap-2">
@@ -113,7 +111,7 @@ export function GenerateReportButton({ projectId }: { projectId: string }) {
                       setRunIds(selectedRuns.includes(r.id) ? selectedRuns.filter((x) => x !== r.id) : [...selectedRuns, r.id])
                     }
                   />
-                  {r.summary && r.summary.violations > 0 && <Badge tone="danger">нарушений: {r.summary.violations}</Badge>}
+                  {r.summary && r.summary.violations > 0 && <Status tone="danger" className="text-xs">нарушений: {r.summary.violations}</Status>}
                 </div>
               ))}
             </div>

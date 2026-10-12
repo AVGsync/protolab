@@ -10,4 +10,5 @@ export type {
   StartRunResult,
   VerificationRun,
 } from './model/types';
-export { FindingKindBadge, RunStatusBadge, StaleBadge } from './ui/RunBadges';
+export { FindingKindMark, RunStatusMark, StaleTag } from './ui/RunMarks';
+export { RunOutcome } from './ui/RunOutcome';

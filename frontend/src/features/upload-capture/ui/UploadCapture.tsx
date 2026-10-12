@@ -1,4 +1,3 @@
-import { FileUp, UploadCloud } from 'lucide-react';
 import { useState, type DragEvent } from 'react';
 import { cn } from '@/shared/lib';
 import { FileButton } from '@/shared/ui';
@@ -9,7 +8,7 @@ const ACCEPT = '.pcap,.pcapng,.cap';
 export function UploadCaptureButton({ projectId }: { projectId: string }) {
   const upload = useUploadCapture(projectId);
   return (
-    <FileButton variant="primary" accept={ACCEPT} icon={<FileUp size={14} />} loading={upload.isPending} onFile={(f) => upload.mutate(f)}>
+    <FileButton variant="primary" accept={ACCEPT} loading={upload.isPending} onFile={(f) => upload.mutate(f)}>
       Загрузить запись
     </FileButton>
   );
@@ -35,16 +34,13 @@ export function CaptureDropzone({ projectId, className }: { projectId: string; c
       onDragLeave={() => setOver(false)}
       onDrop={onDrop}
       className={cn(
-        'flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-6 py-8 text-center transition-colors',
-        over ? 'border-accent bg-accent/5' : 'border-line-strong bg-surface/50',
+        'flex flex-col items-center justify-center gap-2 border border-dashed px-6 py-14 text-center transition-colors',
+        over ? 'border-fg' : 'border-line-strong',
         className,
       )}
     >
-      <UploadCloud className={over ? 'text-accent' : 'text-muted'} size={26} />
       <p className="font-medium">Перетащите PCAP / PCAPNG сюда</p>
-      <p className="max-w-md text-xs text-muted">
-        Ethernet + TCP/IPv4. Исходный файл сохраняется без изменений, его SHA-256 фиксируется. Неподдерживаемые данные диагностируются явно.
-      </p>
+      <p className="text-xs text-muted">Ethernet и TCP/IPv4. Исходный файл сохраняется без изменений.</p>
       <div className="mt-2">
         <UploadCaptureButton projectId={projectId} />
       </div>

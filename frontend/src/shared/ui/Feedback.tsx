@@ -1,34 +1,48 @@
-import { AlertTriangle, Inbox, Loader2, RotateCw } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { CircleNotchIcon } from '@phosphor-icons/react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ApiError } from '../api/http';
 import { cn } from '../lib/cn';
-import type { Tone } from './Badge';
+import { Button } from './Button';
+import type { Tone } from './Status';
 
 export function Spinner({ size = 16, className }: { size?: number; className?: string }) {
-  return <Loader2 size={size} className={cn('animate-spin', className)} aria-hidden />;
+  return <CircleNotchIcon size={size} className={cn('animate-spin', className)} aria-hidden />;
 }
 
-export function Loader({ label = 'Загрузка…', className }: { label?: string; className?: string }) {
+/**
+ * Waits `delay` ms before it shows anything: answers that arrive within a blink never flash a spinner.
+ * The space is reserved meanwhile, so the page does not jump.
+ */
+export function Loader({ label = 'Загрузка…', className, delay = 200 }: { label?: string; className?: string; delay?: number }) {
+  const [visible, setVisible] = useState(delay <= 0);
+  useEffect(() => {
+    if (delay <= 0) return;
+    const timer = setTimeout(() => setVisible(true), delay);
+    return () => clearTimeout(timer);
+  }, [delay]);
   return (
-    <div className={cn('flex items-center justify-center gap-2 py-10 text-muted', className)}>
-      <Spinner />
-      <span>{label}</span>
+    <div role="status" aria-busy className={cn('flex items-center justify-center gap-2 py-10 text-muted', className)}>
+      {visible && (
+        <>
+          <Spinner size={14} />
+          <span>{label}</span>
+        </>
+      )}
     </div>
   );
 }
 
 export interface EmptyStateProps {
-  icon?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
   className?: string;
 }
 
-export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
+/** An empty state is a plain statement and, when there is one, the next action: no illustration. */
+export function EmptyState({ title, description, action, className }: EmptyStateProps) {
   return (
     <div className={cn('flex flex-col items-center justify-center px-6 py-12 text-center', className)}>
-      <div className="mb-3 rounded-full border border-line bg-surface-2 p-3 text-muted">{icon ?? <Inbox size={20} />}</div>
       <p className="font-medium">{title}</p>
       {description && <p className="mt-1 max-w-md text-xs text-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
@@ -41,65 +55,59 @@ export function ErrorState({ error, onRetry, className }: { error: unknown; onRe
   const code = error instanceof ApiError ? error.code : undefined;
   return (
     <div className={cn('flex flex-col items-center justify-center gap-2 px-6 py-10 text-center', className)}>
-      <AlertTriangle className="text-danger" size={22} />
-      <p className="font-medium">Не удалось загрузить данные</p>
+      <p className="flex items-center gap-2 font-medium">
+        <i aria-hidden className="size-[7px] bg-danger" />
+        Не удалось загрузить данные
+      </p>
       <p className="max-w-md text-xs text-muted">
         {message}
-        {code && <span className="ml-1 font-mono text-subtle">[{code}]</span>}
+        {code && <span className="ml-1 font-mono text-muted">[{code}]</span>}
       </p>
       {onRetry && (
-        <button
-          type="button"
-          onClick={onRetry}
-          className="mt-2 inline-flex items-center gap-1.5 text-xs text-info hover:underline"
-        >
-          <RotateCw size={12} /> Повторить
-        </button>
+        <Button variant="ghost" size="sm" onClick={onRetry}>
+          Повторить
+        </Button>
       )}
     </div>
   );
 }
 
-const BAR_TONES: Partial<Record<Tone, string>> = {
-  accent: 'bg-accent',
-  success: 'bg-success',
-  warning: 'bg-warning',
+const BAR_TONES: Record<Tone | 'live', string> = {
+  live: 'bg-accent',
+  ok: 'bg-ok',
+  warn: 'bg-warn',
   danger: 'bg-danger',
   info: 'bg-info',
-  neutral: 'bg-muted',
+  muted: 'bg-muted',
 };
 
-export function Progress({ value, tone = 'accent', className }: { value: number; tone?: Tone; className?: string }) {
+/** Flat progress bar; the accent ("live") while something is running. */
+export function Progress({ value, tone = 'live', className }: { value: number; tone?: Tone | 'live'; className?: string }) {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return (
-    <div className={cn('h-1.5 w-full overflow-hidden rounded-full bg-surface-3', className)}>
-      <div className={cn('h-full rounded-full transition-[width] duration-300', BAR_TONES[tone])} style={{ width: `${pct}%` }} />
+    <div className={cn('h-[3px] w-full bg-line', className)}>
+      <div className={cn('h-full transition-[width] duration-300', BAR_TONES[tone])} style={{ width: `${pct}%` }} />
     </div>
   );
 }
 
-export interface CalloutProps {
-  tone?: 'info' | 'warning' | 'danger' | 'success';
-  icon?: ReactNode;
+export interface NoteProps {
+  tone?: 'info' | 'warn' | 'danger' | 'ok';
   title?: ReactNode;
   children?: ReactNode;
   className?: string;
 }
 
-const CALLOUT_TONES = {
-  info: 'border-info/30 bg-info/8 text-info',
-  warning: 'border-warning/30 bg-warning/8 text-warning',
-  danger: 'border-danger/30 bg-danger/8 text-danger',
-  success: 'border-success/30 bg-success/8 text-success',
-};
+const NOTE_SQUARE = { info: 'bg-info', warn: 'bg-warn', danger: 'bg-danger', ok: 'bg-ok' };
 
-export function Callout({ tone = 'info', icon, title, children, className }: CalloutProps) {
+/** One quiet line (or short paragraph) of context: no box, no fill. Use sparingly. */
+export function Note({ tone = 'info', title, children, className }: NoteProps) {
   return (
-    <div className={cn('flex gap-2.5 rounded-md border px-3 py-2.5', CALLOUT_TONES[tone], className)}>
-      {icon && <div className="mt-0.5 shrink-0">{icon}</div>}
-      <div className="min-w-0 text-[12.5px]">
-        {title && <p className="font-medium">{title}</p>}
-        {children && <div className="text-fg/80">{children}</div>}
+    <div className={cn('flex gap-2 text-xs text-muted', className)}>
+      <i aria-hidden className={cn('mt-[6px] size-[7px] shrink-0', NOTE_SQUARE[tone])} />
+      <div className="min-w-0">
+        {title && <p className="font-medium text-fg">{title}</p>}
+        {children && <div>{children}</div>}
       </div>
     </div>
   );

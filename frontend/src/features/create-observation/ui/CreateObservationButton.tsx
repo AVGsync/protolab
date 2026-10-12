@@ -1,16 +1,16 @@
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { NotebookPen } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { HypothesisStatusBadge, hypothesisQueries } from '@/entities/hypothesis';
+import { HypothesisStatusMark, hypothesisQueries } from '@/entities/hypothesis';
 import { observationApi } from '@/entities/observation';
 import { projectKeys } from '@/entities/project';
 import type { SourceRef } from '@/shared/api';
 import { formatRange, shortHash } from '@/shared/lib';
-import { Button, Callout, Checkbox, Field, Input, KeyValue, Modal, Mono, Textarea, toast } from '@/shared/ui';
+import { Button, Note, Checkbox, Field, Input, KeyValue, Modal, Mono, Textarea, toast } from '@/shared/ui';
 
 export interface CreateObservationButtonProps {
   projectId: string;
-  source: SourceRef;
+  /** The selected bytes; the button is disabled without a selection. */
+  source: SourceRef | null;
   /** Hex of the selected bytes — shown to the researcher and stored as a snapshot by the backend. */
   previewHex: string;
   hasUnknownBytes?: boolean;
@@ -26,13 +26,15 @@ export function CreateObservationButton({ projectId, source, previewHex, hasUnkn
   const hypotheses = useQuery({ ...hypothesisQueries.list(projectId), enabled: open });
 
   const mutation = useMutation({
-    mutationFn: () =>
-      observationApi.create(projectId, {
+    mutationFn: () => {
+      if (!source) throw new Error('Не выделены байты');
+      return observationApi.create(projectId, {
         note,
         source,
         hypothesisIds,
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-      }),
+      });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectKeys.root(projectId) });
       toast.success('Наблюдение сохранено с привязкой к источнику');
@@ -54,14 +56,14 @@ export function CreateObservationButton({ projectId, source, previewHex, hasUnkn
 
   return (
     <>
-      <Button size="sm" variant="primary" icon={<NotebookPen size={13} />} onClick={() => setOpen(true)}>
+      <Button size="sm" variant={source ? 'primary' : 'secondary'} disabled={!source} title={source ? undefined : 'Выделите байты в потоке'} onClick={() => setOpen(true)}>
         Наблюдение
       </Button>
       <Modal
-        open={open}
+        open={open && source !== null}
         onClose={() => setOpen(false)}
         title="Новое наблюдение"
-        description="Наблюдение фиксирует факт в данных и навсегда связано с этими байтами исходной записи."
+        description="Привязывается к этим байтам исходной записи."
         size="lg"
         footer={
           <>
@@ -75,21 +77,23 @@ export function CreateObservationButton({ projectId, source, previewHex, hasUnkn
         }
       >
         <form id="create-observation" onSubmit={submit} className="flex flex-col gap-4">
-          <div className="rounded-md border border-line bg-bg p-3">
-            <KeyValue
-              items={[
-                ['Источник', <Mono key="s">{`${source.sessionId} / ${source.direction}`}</Mono>],
-                ['Диапазон', <Mono key="r">{formatRange(source)}</Mono>],
-                ['Пакеты', <Mono key="p">#{source.packetNumbers.join(', #') || '—'}</Mono>],
-                ['Запись', <Mono key="c">{`${source.captureId} · sha256 ${shortHash(source.captureSha256, 16)}…`}</Mono>],
-                ['Байты', <Mono key="b" className="break-all text-glow">{previewHex}</Mono>],
-              ]}
-            />
-          </div>
+          {source && (
+            <div className="border border-line bg-bg p-3">
+              <KeyValue
+                items={[
+                  ['Источник', <Mono key="s">{`${source.sessionId} / ${source.direction}`}</Mono>],
+                  ['Диапазон', <Mono key="r">{formatRange(source)}</Mono>],
+                  ['Пакеты', <Mono key="p">#{source.packetNumbers.join(', #') || '—'}</Mono>],
+                  ['Запись', <Mono key="c">{`${source.captureId} · sha256 ${shortHash(source.captureSha256, 16)}…`}</Mono>],
+                  ['Байты', <Mono key="b" className="break-all text-fg">{previewHex}</Mono>],
+                ]}
+              />
+            </div>
+          )}
           {hasUnknownBytes && (
-            <Callout tone="warning" title="Диапазон содержит неизвестные байты">
+            <Note tone="warn" title="Диапазон содержит неизвестные байты">
               Часть выделения приходится на пропуск в записи — они не будут интерпретированы как нули.
-            </Callout>
+            </Note>
           )}
           <Field label="Что наблюдается">
             <Textarea
@@ -108,10 +112,10 @@ export function CreateObservationButton({ projectId, source, previewHex, hasUnkn
               {hypotheses.data?.items.map((h) => (
                 <div key={h.id} className="flex items-center justify-between gap-3">
                   <Checkbox label={h.title} checked={hypothesisIds.includes(h.id)} onChange={() => toggle(h.id)} />
-                  <HypothesisStatusBadge status={h.status} />
+                  <HypothesisStatusMark status={h.status} />
                 </div>
               ))}
-              {hypotheses.data?.items.length === 0 && <p className="text-xs text-subtle">Гипотез пока нет.</p>}
+              {hypotheses.data?.items.length === 0 && <p className="text-xs text-muted">Гипотез пока нет.</p>}
             </div>
           </div>
         </form>

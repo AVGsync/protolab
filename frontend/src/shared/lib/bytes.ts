@@ -1,3 +1,5 @@
+import { maskHasAny } from './ranges';
+
 export type IntEncoding =
   | 'u8'
   | 'i8'
@@ -228,18 +230,22 @@ export interface DecodedValue {
   value: string;
 }
 
-/** All common numeric interpretations of the bytes starting at `offset`. */
-export function decodeAt(bytes: Uint8Array, offset: number, limit = bytes.length): DecodedValue[] {
+/**
+ * All common numeric interpretations of the bytes starting at `offset`, using only bytes below `limit`.
+ * A value that would read an unknown byte (`unknownMask[i] === 1`, a capture gap) is "??", never a number.
+ */
+export function decodeAt(bytes: Uint8Array, offset: number, limit = bytes.length, unknownMask?: Uint8Array): DecodedValue[] {
   const slice = bytes.subarray(0, Math.min(bytes.length, limit));
+  const hidden = (size: number) => (unknownMask ? maskHasAny(unknownMask, { offset, length: size }) : false);
   const rows: DecodedValue[] = [];
   for (const enc of INT_ENCODINGS) {
     const v = readInt(slice, offset, enc);
-    if (v !== null) rows.push({ label: enc, value: v.toLocaleString('ru-RU') });
+    if (v !== null) rows.push({ label: enc, value: hidden(ENCODING_SIZE[enc]) ? '??' : String(v) });
   }
   if (offset + 4 <= slice.length) {
     const dv = view(slice);
-    rows.push({ label: 'f32le', value: formatFloat(dv.getFloat32(offset, true)) });
-    rows.push({ label: 'f32be', value: formatFloat(dv.getFloat32(offset, false)) });
+    rows.push({ label: 'f32le', value: hidden(4) ? '??' : formatFloat(dv.getFloat32(offset, true)) });
+    rows.push({ label: 'f32be', value: hidden(4) ? '??' : formatFloat(dv.getFloat32(offset, false)) });
   }
   return rows;
 }

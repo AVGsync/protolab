@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encodeInt } from './bytes';
-import { columnStats, findFieldCandidates } from './compare';
+import { columnHeat, columnStats, findFieldCandidates } from './compare';
 
 function setParamFrame(value: number): Uint8Array {
   const v = encodeInt(value, 'i16le')!;
@@ -14,6 +14,19 @@ describe('columnStats', () => {
       { bytes: Uint8Array.from([1, 5]) },
     ]);
     expect(stats.map((s) => s.kind)).toEqual(['constant', 'variable', 'partial']);
+  });
+});
+
+describe('columnHeat', () => {
+  it('is 0 for constants, grows with the share of different values, 5 when every message differs', () => {
+    const stats = columnStats([1, 2, 3, 4, 5].map((v) => ({ bytes: Uint8Array.from([7, v, v % 2, 9]) })));
+    expect(stats.map(columnHeat)).toEqual([0, 5, 2, 0]);
+  });
+
+  it('has no heat for columns that are missing in some messages', () => {
+    const [, partial] = columnStats([{ bytes: Uint8Array.from([1, 2]) }, { bytes: Uint8Array.from([1]) }]);
+    expect(partial.kind).toBe('partial');
+    expect(columnHeat(partial)).toBe(0);
   });
 });
 

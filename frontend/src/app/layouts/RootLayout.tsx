@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router';
 import { AppHeader } from '@/widgets/app-header';
+import { SoftKeys } from '@/widgets/soft-keys';
 import { Toaster } from '@/shared/ui';
 
 export function RootLayout() {
@@ -9,6 +10,7 @@ export function RootLayout() {
       <main className="min-h-0 flex-1 overflow-auto">
         <Outlet />
       </main>
+      <SoftKeys />
       <Toaster />
     </div>
   );

@@ -1,10 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { GitCommitVertical } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { interpretationApi, type InterpretationSpec, type InterpretationVersion } from '@/entities/interpretation';
 import { projectKeys } from '@/entities/project';
 import { ApiError } from '@/shared/api';
-import { Button, Callout, Field, Input, Modal, toast } from '@/shared/ui';
+import { Button, Note, Field, Input, Modal, toast } from '@/shared/ui';
 
 export interface SaveVersionButtonProps {
   projectId: string;
@@ -42,14 +41,14 @@ export function SaveVersionButton({ projectId, interpretationId, spec, disabled,
 
   return (
     <>
-      <Button variant="primary" icon={<GitCommitVertical size={14} />} disabled={disabled || !spec} onClick={() => setOpen(true)}>
+      <Button variant="primary" disabled={disabled || !spec} onClick={() => setOpen(true)}>
         Сохранить версию
       </Button>
       <Modal
         open={open}
         onClose={() => setOpen(false)}
         title="Новая версия интерпретации"
-        description="Версия неизменяема и получает собственный хеш. Результаты проверок прошлых версий не выдаются за актуальные."
+        description="Версия неизменяема и получает собственный хеш."
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
@@ -63,18 +62,18 @@ export function SaveVersionButton({ projectId, interpretationId, spec, disabled,
       >
         <form id="save-version" onSubmit={submit} className="flex flex-col gap-3">
           <Field label="Что изменилось и почему" hint="Ссылка на гипотезу/контрпример помогает следующему инженеру">
-            <Input autoFocus value={comment} onChange={(e) => setComment(e.target.value)} placeholder="value → i16 LE (контрпример: интервал 600)" />
+            <Input autoFocus value={comment} onChange={(e) => setComment(e.target.value)} placeholder="value как i16 LE (контрпример: интервал 600)" />
           </Field>
           {issues.length > 0 && (
-            <Callout tone="danger" title="Сервер отклонил спецификацию">
+            <Note tone="danger" title="Сервер отклонил спецификацию">
               <ul className="mt-1 list-inside list-disc">
                 {(issues as { path: string; message: string }[]).map((i, n) => (
                   <li key={n}>
-                    <code className="font-mono text-[11px]">{i.path}</code> {i.message}
+                    <code className="font-mono text-2xs">{i.path}</code> {i.message}
                   </li>
                 ))}
               </ul>
-            </Callout>
+            </Note>
           )}
         </form>
       </Modal>

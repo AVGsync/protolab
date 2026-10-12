@@ -1,4 +1,4 @@
-import { Check, Copy } from 'lucide-react';
+import { CheckIcon, CopyIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 import { cn } from '../lib/cn';
 import { toast } from './toast-store';
@@ -21,9 +21,9 @@ export function CopyButton({ value, label, className }: { value: string; label?:
       type="button"
       onClick={copy}
       title="Скопировать"
-      className={cn('inline-flex items-center gap-1 rounded px-1 text-subtle hover:bg-surface-3 hover:text-fg', className)}
+      className={cn('inline-flex items-center gap-1 rounded-ctl px-1 text-muted hover:bg-surface-2 hover:text-fg', className)}
     >
-      {copied ? <Check size={12} className="text-success" /> : <Copy size={12} />}
+      {copied ? <CheckIcon size={12} className="text-ok" /> : <CopyIcon size={12} />}
       {label && <span className="text-xs">{label}</span>}
     </button>
   );

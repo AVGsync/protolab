@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Download, Eye, GitBranch, ListTree, PencilLine } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { hypothesisQueries } from '@/entities/hypothesis';
@@ -10,23 +9,37 @@ import {
   type InterpretationVersion,
 } from '@/entities/interpretation';
 import { sessionQueries } from '@/entities/session';
-import { SaveVersionButton, SpecEditor, useSpecDraft } from '@/features/edit-interpretation';
+import { CreateInterpretationButton, SaveVersionButton, SpecEditor, useSpecDraft } from '@/features/edit-interpretation';
 import { StartRunButton } from '@/features/run-verification';
 import { FieldTable, MessageList } from '@/widgets/message-panel';
 import { SpecOutline } from '@/widgets/spec-outline';
 import type { ListResponse } from '@/shared/api';
 import { routes } from '@/shared/config';
 import { cn, formatDateTime, shortHash, useDebouncedValue, useRequiredParams } from '@/shared/lib';
-import { Badge, Callout, DownloadButton, EmptyState, ErrorState, Loader, Select, Tabs } from '@/shared/ui';
+import { Arrow, DownloadButton, EmptyState, ErrorState, Loader, Note, Select, Status, Tabs, Tag } from '@/shared/ui';
 
 export function InterpretationEditorPage() {
-  const { projectId, interpretationId } = useRequiredParams('projectId', 'interpretationId');
+  const { projectId } = useRequiredParams('projectId');
   const [params] = useSearchParams();
-  const interp = useQuery(interpretationQueries.detail(interpretationId));
-  const versions = useQuery(interpretationQueries.versions(interpretationId));
+  const list = useQuery(interpretationQueries.list(projectId));
+  // The editor shows one interpretation: the one in ?i=, else the first.
+  const interpretationId = params.get('i') ?? list.data?.items[0]?.id ?? '';
+  const hasInterpretation = !!interpretationId;
+  const interp = useQuery({ ...interpretationQueries.detail(interpretationId), enabled: hasInterpretation });
+  const versions = useQuery({ ...interpretationQueries.versions(interpretationId), enabled: hasInterpretation });
   const versionId = params.get('v') ?? interp.data?.latestVersionId;
   const version = useQuery({ ...interpretationQueries.version(versionId ?? ''), enabled: !!versionId });
 
+  if (list.isLoading) return <Loader />;
+  if (list.error) return <ErrorState error={list.error} onRetry={list.refetch} />;
+  if (!hasInterpretation)
+    return (
+      <EmptyState
+        title="Интерпретаций нет"
+        description="Даже частичное описание полезно, если границы известного обозначены."
+        action={<CreateInterpretationButton projectId={projectId} />}
+      />
+    );
   if (interp.isLoading || version.isLoading) return <Loader />;
   if (interp.error || !interp.data) return <ErrorState error={interp.error} onRetry={interp.refetch} />;
   if (version.error || !version.data) return <ErrorState error={version.error} onRetry={version.refetch} />;
@@ -37,6 +50,7 @@ export function InterpretationEditorPage() {
       key={version.data.id}
       projectId={projectId}
       interp={interp.data}
+      interpretations={list.data?.items ?? []}
       version={version.data}
       versions={versions.data}
     />
@@ -48,11 +62,12 @@ type LeftTab = 'editor' | 'outline' | 'versions';
 interface EditorWorkspaceProps {
   projectId: string;
   interp: Interpretation;
+  interpretations: Interpretation[];
   version: InterpretationVersion;
   versions?: ListResponse<InterpretationVersion>;
 }
 
-function EditorWorkspace({ projectId, interp, version, versions }: EditorWorkspaceProps) {
+function EditorWorkspace({ projectId, interp, interpretations, version, versions }: EditorWorkspaceProps) {
   const navigate = useNavigate();
   const draft = useSpecDraft(version.spec);
   const [tab, setTab] = useState<LeftTab>('editor');
@@ -74,6 +89,8 @@ function EditorWorkspace({ projectId, interp, version, versions }: EditorWorkspa
     staleTime: Infinity,
   });
   const valid = validation.data?.valid ?? false;
+  // Known to be broken: not merely not validated yet, so a valid spec never flashes the empty state.
+  const invalid = !!draft.syntaxError || validation.data?.valid === false;
 
   const sessions = useQuery(sessionQueries.list(projectId, { target: true }));
   const [sessionOverride, setSessionOverride] = useState('');
@@ -91,15 +108,28 @@ function EditorWorkspace({ projectId, interp, version, versions }: EditorWorkspa
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2.5">
-        <Link to={routes.interpretations(projectId)} className="text-muted hover:text-fg">
-          <ArrowLeft size={16} />
-        </Link>
-        <span className="font-semibold">{interp.name}</span>
+      <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface px-4 py-2">
+        {interpretations.length > 1 ? (
+          <Select
+            value={interp.id}
+            onChange={(e) => navigate(routes.spec(projectId, { interpretationId: e.target.value }))}
+            className="w-56"
+            title="Интерпретация"
+          >
+            {interpretations.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          <span className="font-semibold">{interp.name}</span>
+        )}
         <Select
           value={version.id}
-          onChange={(e) => navigate(routes.interpretation(projectId, interp.id, e.target.value))}
+          onChange={(e) => navigate(routes.spec(projectId, { interpretationId: interp.id, versionId: e.target.value }))}
           className="w-40"
+          title="Версия"
         >
           {versions?.items.map((v) => (
             <option key={v.id} value={v.id}>
@@ -108,29 +138,27 @@ function EditorWorkspace({ projectId, interp, version, versions }: EditorWorkspa
             </option>
           ))}
         </Select>
-        <span className="font-mono text-[11px] text-subtle" title={version.hash}>
-          sha256 {shortHash(version.hash, 12)}
+        <span className="font-mono text-2xs text-muted" title={`sha256 ${version.hash}`}>
+          {shortHash(version.hash, 12)}
         </span>
-        {draft.dirty && <Badge tone="warning">есть несохранённые изменения</Badge>}
+        {draft.dirty && <Status tone="warn">есть несохранённые изменения</Status>}
         <div className="ml-auto flex items-center gap-2">
-          <DownloadButton href={interpretationApi.exportUrl(version.id)} fileName={`${interp.name}.v${version.version}.json`}>
-            <Download size={14} /> JSON
-          </DownloadButton>
+          <CreateInterpretationButton projectId={projectId} variant="ghost" label="Новая" />
           <StartRunButton projectId={projectId} defaultVersionId={version.id} variant="secondary" label="Проверить" />
           <SaveVersionButton
             projectId={projectId}
             interpretationId={interp.id}
             spec={draft.spec}
             disabled={!draft.dirty || !valid}
-            onSaved={(v) => navigate(routes.interpretation(projectId, interp.id, v.id))}
+            onSaved={(v) => navigate(routes.spec(projectId, { interpretationId: interp.id, versionId: v.id }))}
           />
         </div>
       </div>
 
       {!isLatest && (
-        <Callout tone="warning" className="mx-4 mt-3">
+        <Note tone="warn" className="mx-4 mt-3">
           Просматривается v{version.version}; актуальная — v{interp.latestVersion}. Сохранение создаст новую версию на основе этого текста.
-        </Callout>
+        </Note>
       )}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
@@ -139,9 +167,9 @@ function EditorWorkspace({ projectId, interp, version, versions }: EditorWorkspa
             value={tab}
             onChange={setTab}
             items={[
-              { id: 'editor', label: 'Спецификация', icon: <PencilLine size={13} /> },
-              { id: 'outline', label: 'Структура', icon: <ListTree size={13} /> },
-              { id: 'versions', label: 'Версии', icon: <GitBranch size={13} />, badge: versions?.total },
+              { id: 'editor', label: 'Спецификация' },
+              { id: 'outline', label: 'Структура' },
+              { id: 'versions', label: 'Версии', count: versions?.total },
             ]}
           />
           <div className="min-h-0 flex-1 overflow-hidden p-3">
@@ -164,22 +192,30 @@ function EditorWorkspace({ projectId, interp, version, versions }: EditorWorkspa
               </div>
             )}
             {tab === 'versions' && (
-              <ul className="h-full divide-y divide-line overflow-y-auto rounded-md border border-line">
+              <ul className="h-full divide-y divide-line overflow-y-auto border border-line">
                 {versions?.items.map((v) => (
-                  <li key={v.id} className={cn('flex items-start gap-3 px-3 py-2.5', v.id === version.id && 'bg-accent/8')}>
-                    <span className="rounded bg-surface-3 px-1.5 font-mono text-[12px]">v{v.version}</span>
+                  <li key={v.id} className={cn('flex items-start gap-3 px-3 py-2.5', v.id === version.id && 'bg-selection')}>
+                    <Tag>v{v.version}</Tag>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[12.5px]">{v.comment}</p>
-                      <p className="font-mono text-[11px] text-subtle">
+                      <p className="text-xs">{v.comment}</p>
+                      <p className="font-mono text-2xs text-muted">
                         {formatDateTime(v.createdAt)} · {shortHash(v.hash, 16)}
                       </p>
                     </div>
-                    {v.id === interp.latestVersionId && <Badge tone="success">актуальная</Badge>}
+                    {v.id === interp.latestVersionId && <Tag>актуальная</Tag>}
                     {v.id !== version.id && (
-                      <Link to={routes.interpretation(projectId, interp.id, v.id)} className="text-xs text-info hover:underline">
+                      <Link to={routes.spec(projectId, { interpretationId: interp.id, versionId: v.id })} className="link text-xs">
                         открыть
                       </Link>
                     )}
+                    <DownloadButton
+                      href={interpretationApi.exportUrl(v.id)}
+                      fileName={`${interp.name}.v${v.version}.json`}
+                      variant="ghost"
+                      size="xs"
+                    >
+                      JSON
+                    </DownloadButton>
                   </li>
                 ))}
               </ul>
@@ -188,48 +224,50 @@ function EditorWorkspace({ projectId, interp, version, versions }: EditorWorkspa
         </section>
 
         <section className="flex min-h-0 flex-col">
-          <div className="flex items-center gap-2 border-b border-line px-3 py-2">
-            <Eye size={14} className="text-muted" />
-            <span className="text-[12.5px] font-medium">Предпросмотр черновика</span>
+          <div className="flex h-9 shrink-0 items-center gap-3 border-b border-line px-3">
+            <span className="text-sm font-medium">Предпросмотр</span>
+            {valid && (
+              <span className="flex items-center gap-3 text-xs">
+                {Object.entries(counts).map(([status, n]) => (
+                  <Status key={status} tone={status === 'ok' ? 'ok' : status === 'violation' ? 'danger' : 'warn'}>
+                    {status} <span className="font-mono">{n}</span>
+                  </Status>
+                ))}
+              </span>
+            )}
             <Select
               value={sessionId}
               onChange={(e) => {
                 setSessionOverride(e.target.value);
                 setActiveIndex(null);
               }}
-              className="ml-auto w-64"
+              className="ml-auto w-36"
+              aria-label="Сессия для предпросмотра"
             >
               {sessions.data?.items.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.id} · {s.capture.fileName}
+                <option key={s.id} value={s.id} title={s.capture.fileName}>
+                  {s.id}
                 </option>
               ))}
             </Select>
           </div>
-          <div className="flex flex-wrap gap-1.5 border-b border-line px-3 py-2">
-            {Object.entries(counts).map(([status, n]) => (
-              <Badge key={status} tone={status === 'ok' ? 'success' : status === 'violation' ? 'danger' : 'warning'}>
-                {status}: {n}
-              </Badge>
-            ))}
-            {!valid && <span className="text-xs text-muted">Предпросмотр появится, когда спецификация станет корректной.</span>}
-          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {preview.isFetching && !preview.data && <Loader />}
+            {invalid && <EmptyState title="Предпросмотра нет" description="Он появится, когда спецификация станет корректной." />}
+            {valid && preview.isFetching && !preview.data && <Loader />}
             {preview.error && <ErrorState error={preview.error} />}
             <MessageList messages={messages} activeIndex={activeIndex} onSelect={(m) => setActiveIndex(m.index)} />
             {active && (
               <div className="border-t border-line p-3">
-                <FieldTable message={active} onSelectRange={() => undefined} />
+                <FieldTable message={active} selection={null} link={null} onSelectRange={() => undefined} onLink={() => undefined} />
                 <Link
                   to={routes.session(projectId, active.sessionId, {
                     dir: active.direction,
                     v: draft.dirty ? undefined : version.id,
                     sel: { offset: active.offset, length: active.length },
                   })}
-                  className="mt-2 inline-block text-xs text-info hover:underline"
+                  className="link mt-2 inline-flex items-center gap-1.5 text-xs"
                 >
-                  Открыть в потоке →
+                  Открыть в потоке <Arrow />
                 </Link>
               </div>
             )}

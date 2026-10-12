@@ -35,6 +35,15 @@ export function columnStats(rows: readonly CompareRow[]): ColumnStat[] {
   return stats;
 }
 
+/**
+ * Variability of a column on the 0..5 heat scale: 0 = the same in every message, 5 = different in every message.
+ * Columns missing in some messages have no heat (they are drawn hatched).
+ */
+export function columnHeat(s: Pick<ColumnStat, 'kind' | 'distinct' | 'present'>): number {
+  if (s.kind === 'constant' || s.present < 2) return 0;
+  return 1 + Math.round(((s.distinct - 1) / (s.present - 1)) * 4);
+}
+
 export interface FieldCandidate {
   offset: number;
   encoding: IntEncoding;

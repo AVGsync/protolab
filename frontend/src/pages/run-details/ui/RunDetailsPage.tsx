@@ -1,15 +1,18 @@
+import { ArrowLeftIcon } from '@phosphor-icons/react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Clock3 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { corpusQueries, describeCorpusFilter } from '@/entities/corpus';
 import { interpretationQueries } from '@/entities/interpretation';
-import { FINDING_KIND, FINDING_KINDS, RunStatusBadge, StaleBadge, verificationQueries, type FindingKind } from '@/entities/verification';
+import { FINDING_KIND, FINDING_KINDS, RunStatusMark, StaleTag, verificationQueries, type FindingKind } from '@/entities/verification';
 import { StartRunButton } from '@/features/run-verification';
-import { FindingsTable, RuleStatsTable, RunSummaryCards } from '@/widgets/verification-report';
+import { FindingsTable, RuleStatsTable, RunReadout } from '@/widgets/verification-report';
 import { routes } from '@/shared/config';
-import { formatDateTime, formatDuration, shortHash, useRequiredParams } from '@/shared/lib';
-import { Callout, Card, CardBody, CardHeader, EmptyState, ErrorState, KeyValue, Loader, Mono, Page, PageHeader, Progress, Tabs } from '@/shared/ui';
+import { countLabel, formatDateTime, formatDuration, shortHash, useRequiredParams } from '@/shared/lib';
+import { Disclosure, EmptyState, ErrorState, KeyValue, Loader, Mono, Note, Page, PageHeader, Pane, Progress, Tabs } from '@/shared/ui';
+
+/** One table at a time: findings of a kind, or the same run cut by rule. */
+type View = FindingKind | 'all' | 'rules';
 
 export function RunDetailsPage() {
   const { projectId, runId } = useRequiredParams('projectId', 'runId');
@@ -21,31 +24,32 @@ export function RunDetailsPage() {
   const previous = useQuery({ ...verificationQueries.run(run.data?.previousRunId ?? ''), enabled: !!run.data?.previousRunId });
   const corpora = useQuery(corpusQueries.list(projectId));
   const interp = useQuery({ ...interpretationQueries.detail(run.data?.interpretationId ?? ''), enabled: !!run.data });
-  const [kind, setKind] = useState<FindingKind | 'all'>('all');
+  const [view, setView] = useState<View>('all');
 
   if (run.isLoading) return <Loader />;
   if (run.error || !run.data) return <ErrorState error={run.error} onRetry={run.refetch} />;
   const r = run.data;
   const corpus = corpora.data?.items.find((c) => c.id === r.corpusId);
   const all = findings.data?.items ?? [];
-  const visible = kind === 'all' ? all : all.filter((f) => f.kind === kind);
+  const visible = view === 'all' || view === 'rules' ? all : all.filter((f) => f.kind === view);
   const countOf = (k: FindingKind) => all.filter((f) => f.kind === k).length;
 
   return (
-    <Page className="max-w-none">
-      <Link to={routes.verification(projectId)} className="mb-3 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
-        <ArrowLeft size={13} /> Все проверки
+    <Page>
+      <Link to={routes.verification(projectId)} className="mb-2 inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
+        <ArrowLeftIcon size={12} /> Все проверки
       </Link>
       <PageHeader
+        className="mb-2"
         title={
-          <span className="flex items-center gap-2">
-            Проверка <Mono className="text-base">{r.id}</Mono>
+          <span className="flex items-baseline gap-2">
+            Проверка <Mono className="text-lg">{r.id}</Mono>
           </span>
         }
         meta={
           <>
-            <RunStatusBadge status={r.status} />
-            {r.stale && <StaleBadge reasons={r.staleReasons} />}
+            <RunStatusMark status={r.status} />
+            {r.stale && <StaleTag reasons={r.staleReasons} />}
           </>
         }
         actions={
@@ -61,93 +65,99 @@ export function RunDetailsPage() {
         }
       />
 
+      {/* What was checked, on one line; hashes and engine settings are one click away. */}
+      <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted">
+        <Link to={routes.spec(projectId, { interpretationId: r.interpretationId, versionId: r.versionId })} className="link text-fg">
+          {r.interpretationName} v{r.version}
+        </Link>
+        <span aria-hidden>·</span>
+        <span>
+          {r.corpusName}
+          {corpus ? `, ${countLabel(corpus.sessionIds.length, ['сессия', 'сессии', 'сессий'])}` : ''}
+        </span>
+        <span aria-hidden>·</span>
+        <span>{formatDateTime(r.startedAt)}</span>
+        {r.durationMs !== undefined && (
+          <>
+            <span aria-hidden>·</span>
+            <span className="font-mono">{formatDuration(r.durationMs)}</span>
+          </>
+        )}
+        {previous.data && (
+          <>
+            <span aria-hidden>·</span>
+            <span title="Числа в сводке показаны в сравнении с этой проверкой той же интерпретации на этом корпусе">
+              сравнение с{' '}
+              <Link to={routes.run(projectId, previous.data.id)} className="link">
+                {previous.data.id} (v{previous.data.version})
+              </Link>
+            </span>
+          </>
+        )}
+      </p>
+      <Disclosure summary="Условия воспроизведения" className="mt-1.5">
+        <div className="grid gap-x-10 gap-y-1 border-l border-line pl-4 lg:grid-cols-2">
+          <KeyValue
+            items={[
+              ['Хеш версии', <Mono key="h">{shortHash(r.versionHash, 24)}</Mono>],
+              ['Корпус', <Mono key="c">{shortHash(r.corpusHash, 24)}</Mono>],
+              ['Отбор', corpus ? describeCorpusFilter(corpus.filter).join(' · ') : '—'],
+            ]}
+          />
+          <KeyValue
+            items={[
+              ['Движок', <Mono key="e">{r.engineVersion}</Mono>],
+              ['Перекрытия', r.settings.overlapPolicy],
+              ['Checksum', r.settings.checksumPolicy],
+            ]}
+          />
+        </div>
+      </Disclosure>
+
       {r.stale && (
-        <Callout tone="warning" icon={<Clock3 size={14} />} title="Результат устарел и не отражает текущее состояние" className="mb-4">
+        <Note tone="warn" title="Результат устарел и не отражает текущее состояние" className="mt-4">
           <ul className="list-inside list-disc">
             {r.staleReasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
           </ul>
-        </Callout>
+        </Note>
       )}
 
-      <div className="mb-4 grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Что проверялось" />
-          <CardBody>
-            <KeyValue
-              items={[
-                [
-                  'Интерпретация',
-                  <Link key="i" to={routes.interpretation(projectId, r.interpretationId, r.versionId)} className="text-info hover:underline">
-                    {r.interpretationName} v{r.version}
-                  </Link>,
-                ],
-                ['Хеш версии', <Mono key="h">{shortHash(r.versionHash, 24)}</Mono>],
-                ['Корпус', `${r.corpusName}${corpus ? ` — ${corpus.sessionIds.length} сессий` : ''}`],
-                ['Условия отбора', corpus ? describeCorpusFilter(corpus.filter).join(' · ') : '—'],
-                ['Хеш корпуса', <Mono key="c">{shortHash(r.corpusHash, 24)}</Mono>],
-              ]}
-            />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title="Условия воспроизведения" />
-          <CardBody>
-            <KeyValue
-              items={[
-                ['Движок', <Mono key="e">{r.engineVersion}</Mono>],
-                ['Перекрытия', r.settings.overlapPolicy],
-                ['Checksum', r.settings.checksumPolicy],
-                ['Запуск', formatDateTime(r.startedAt)],
-                ['Длительность', r.durationMs !== undefined ? formatDuration(r.durationMs) : '—'],
-              ]}
-            />
-          </CardBody>
-        </Card>
-      </div>
-
       {(r.status === 'running' || r.status === 'queued') && (
-        <Card className="mb-4 px-4 py-4">
-          <p className="mb-2 text-[13px]">Проверка выполняется…</p>
-          <Progress value={0.5} tone="info" className="animate-pulse" />
-        </Card>
+        <Pane className="mt-4 px-4 py-4">
+          <p className="mb-2 text-sm">Проверка выполняется…</p>
+          <Progress value={0.5} className="animate-pulse" />
+        </Pane>
       )}
 
       {r.summary && (
-        <>
-          <RunSummaryCards summary={r.summary} previous={previous.data?.summary} />
-          {previous.data && (
-            <p className="mt-2 text-[11.5px] text-subtle">
-              Сравнение с предыдущей проверкой той же интерпретации на этом корпусе:{' '}
-              <Link to={routes.run(projectId, previous.data.id)} className="text-info hover:underline">
-                {previous.data.id} (v{previous.data.version})
-              </Link>
-            </p>
-          )}
-          <Callout tone="info" className="mt-4">
+        <div className="mt-4">
+          <RunReadout summary={r.summary} previous={previous.data?.summary} />
+          <Note tone="info" className="mt-3">
             Совпадение на выбранных примерах не доказывает назначение полей и универсальность модели. Неприменимые правила
             {r.summary.inapplicableRules.length ? ` (${r.summary.inapplicableRules.join(', ')})` : ''} на этом корпусе не проверены.
-          </Callout>
+          </Note>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_340px]">
-            <Card className="min-w-0">
-              <Tabs<FindingKind | 'all'>
-                value={kind}
-                onChange={setKind}
-                items={[
-                  { id: 'all', label: 'Все', badge: all.length },
-                  ...FINDING_KINDS.filter((k) => countOf(k) > 0).map((k) => ({ id: k, label: FINDING_KIND[k].label, badge: countOf(k) })),
-                ]}
-              />
-              {findings.isLoading ? <Loader /> : <FindingsTable projectId={projectId} findings={visible} versionId={r.versionId} />}
-            </Card>
-            <Card className="self-start">
-              <CardHeader title="По правилам" />
+          <Pane className="mt-4 min-w-0">
+            <Tabs<View>
+              value={view}
+              onChange={setView}
+              items={[
+                { id: 'all', label: 'Все находки', count: all.length },
+                ...FINDING_KINDS.filter((k) => countOf(k) > 0).map((k) => ({ id: k, label: FINDING_KIND[k].label, count: countOf(k) })),
+                { id: 'rules', label: 'По правилам', count: r.summary.byRule.length },
+              ]}
+            />
+            {view === 'rules' ? (
               <RuleStatsTable summary={r.summary} />
-            </Card>
-          </div>
-        </>
+            ) : findings.isLoading ? (
+              <Loader />
+            ) : (
+              <FindingsTable projectId={projectId} findings={visible} versionId={r.versionId} empty={view === 'all' ? 'Находок нет' : undefined} />
+            )}
+          </Pane>
+        </div>
       )}
       {r.status === 'cancelled' && <EmptyState title="Проверка отменена" description="Результаты не сформированы." />}
     </Page>

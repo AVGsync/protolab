@@ -1,21 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { Columns3 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { actionQueries, numericParams, type ActionEntry } from '@/entities/action';
 import { interpretationQueries } from '@/entities/interpretation';
 import { messageQueries } from '@/entities/message';
 import { CreateHypothesisButton } from '@/features/manage-hypothesis';
-import { CandidateList, CompareMatrix, type CompareRowData } from '@/widgets/compare-matrix';
+import { CandidateList, CompareMatrix, HeatLegend, type CompareRowData } from '@/widgets/compare-matrix';
 import { routes } from '@/shared/config';
-import {
-  base64ToBytes,
-  columnStats,
-  ENCODING_SIZE,
-  findFieldCandidates,
-  useRequiredParams,
-  type FieldCandidate,
-} from '@/shared/lib';
-import { Card, CardBody, CardHeader, EmptyState, ErrorState, Field, Loader, Page, PageHeader, Select } from '@/shared/ui';
+import { base64ToBytes, columnStats, ENCODING_SIZE, findFieldCandidates, useRequiredParams, type FieldCandidate } from '@/shared/lib';
+import { EmptyState, ErrorState, InlineField, Loader, Page, PageHeader, Pane, PaneHeader, Select } from '@/shared/ui';
 
 /** Candidate value paths of an action: params.* and observed.* */
 function valuePaths(action: ActionEntry | undefined): Record<string, number> {
@@ -56,9 +49,7 @@ export function ComparePage() {
     return [...set].sort();
   }, [items, actionBySession]);
   const activePath =
-    paramPath && paths.includes(paramPath)
-      ? paramPath
-      : ([...assertedPaths].reverse().find((p) => paths.includes(p)) ?? paths[0] ?? '');
+    paramPath && paths.includes(paramPath) ? paramPath : ([...assertedPaths].reverse().find((p) => paths.includes(p)) ?? paths[0] ?? '');
 
   const rows: CompareRowData[] = useMemo(
     () =>
@@ -80,88 +71,91 @@ export function ComparePage() {
   const search = useMemo(() => findFieldCandidates(rows), [rows]);
 
   return (
-    <Page className="max-w-none">
-      <PageHeader
-        title="Сравнение примеров"
-        description="Сообщения одного типа из разных действий, выровненные по смещению. Различающиеся байты сопоставляются с параметрами из журнала действий."
-      />
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Field label="Интерпретация (кадрирование)" className="w-64">
-          <Select
-            value={versionId}
-            onChange={(e) => {
-              setVersionOverride(e.target.value);
-              setRuleOverride('');
-              setPicked(null);
-            }}
-          >
-            {interpretations.data?.items.map((i) => (
-              <option key={i.id} value={i.latestVersionId}>
-                {i.name} v{i.latestVersion}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Тип сообщения" className="w-64">
-          <Select
-            value={ruleId}
-            onChange={(e) => {
-              setRuleOverride(e.target.value);
-              setPicked(null);
-            }}
-          >
-            {spec?.messages.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Сопоставить с" className="w-56">
-          <Select
-            value={activePath}
-            onChange={(e) => {
-              setParamPath(e.target.value);
-              setPicked(null);
-            }}
-          >
-            {paths.length === 0 && <option value="">нет числовых параметров</option>}
-            {paths.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <span className="mb-2 text-xs text-muted">{rows.length} сообщений</span>
-      </div>
+    <Page>
+      <PageHeader title="Сравнение примеров" meta={rows.length > 0 ? `${rows.length} сообщений` : undefined} />
+      {versionId && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <InlineField label="Интерпретация">
+            <Select
+              className="w-48"
+              value={versionId}
+              onChange={(e) => {
+                setVersionOverride(e.target.value);
+                setRuleOverride('');
+                setPicked(null);
+              }}
+            >
+              {interpretations.data?.items.map((i) => (
+                <option key={i.id} value={i.latestVersionId}>
+                  {i.name} v{i.latestVersion}
+                </option>
+              ))}
+            </Select>
+          </InlineField>
+          <InlineField label="Тип сообщения">
+            <Select
+              className="w-52"
+              value={ruleId}
+              onChange={(e) => {
+                setRuleOverride(e.target.value);
+                setPicked(null);
+              }}
+            >
+              {spec?.messages.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.id}
+                </option>
+              ))}
+            </Select>
+          </InlineField>
+          <InlineField label="Сопоставить с">
+            <Select
+              className="w-48"
+              value={activePath}
+              onChange={(e) => {
+                setParamPath(e.target.value);
+                setPicked(null);
+              }}
+            >
+              {paths.length === 0 && <option value="">нет числовых параметров</option>}
+              {paths.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </Select>
+          </InlineField>
+        </div>
+      )}
 
       {!versionId && !interpretations.isLoading && (
-        <EmptyState icon={<Columns3 size={20} />} title="Нужна интерпретация" description="Сравнение работает с сообщениями, выделенными правилом кадрирования." />
+        <EmptyState
+          title="Нужна интерпретация"
+          description="Сравнение работает с сообщениями, выделенными правилом кадрирования."
+          action={
+            <Link to={routes.spec(projectId)} className="link text-xs">
+              К спецификации
+            </Link>
+          }
+        />
       )}
       {messages.isLoading && <Loader />}
       {messages.error && <ErrorState error={messages.error} onRetry={messages.refetch} />}
 
       {rows.length > 0 && (
-        <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
-          <div className="min-w-0">
+        <div className="flex flex-col items-start gap-6 xl:flex-row">
+          <div className="min-w-0 max-w-full">
             <CompareMatrix
               rows={rows}
               stats={stats}
               paramLabel={activePath.split('.')[1] ?? 'параметр'}
               highlight={picked ? { offset: picked.offset, length: ENCODING_SIZE[picked.encoding] } : null}
             />
-            <p className="mt-2 text-[11.5px] text-subtle">
-              Цвет номера столбца: <span className="text-subtle">константа</span> · <span className="text-glow">различается</span> ·{' '}
-              <span className="text-violet">есть не во всех сообщениях</span>
-            </p>
+            <HeatLegend className="mt-2" />
           </div>
-          <Card className="self-start">
-            <CardHeader
-              title="Кандидаты в поля"
-              description={`Позиции, где значение совпадает с ${activePath || 'параметром'} — основание и контрпримеры`}
-            />
-            <CardBody>
+          <Pane className="w-full shrink-0 xl:w-[360px]">
+            <PaneHeader title="Кандидаты в поля" />
+            <div>
               <CandidateList
                 search={search}
                 rowLabels={rows.map((r) => r.label)}
@@ -181,8 +175,8 @@ export function ComparePage() {
                   />
                 )}
               />
-            </CardBody>
-          </Card>
+            </div>
+          </Pane>
         </div>
       )}
     </Page>

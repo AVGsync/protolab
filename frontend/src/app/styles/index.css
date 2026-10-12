@@ -1,29 +1,164 @@
 @import 'tailwindcss';
 
-/* Design tokens. The app works offline, so only system fonts are used. */
-@theme {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+/*
+ * Design system «Стенд»: ProtoLab as a bench instrument (a logic analyzer for TCP).
+ * Raw values live in --pl-* on :root[data-theme]; Tailwind sees them through `@theme inline`.
+ * The theme attribute is set before first paint by the inline script in index.html.
+ * Rationale and references: docs/design.md.
+ *
+ * Colour roles (one job each, never mixed):
+ *   neutrals  bg / surface / surface-2 / line / line-strong / fg / muted   (structure and text)
+ *   accent    ONE signal orange: "where I am" (section marker), focus ring, hex cursor, live progress
+ *   status    ok / warn / danger / unknown: verification outcome and capture health, never decoration
+ *   channel   ch-c2s (amber) / ch-s2c (cyan): direction of a stream, after oscilloscope channel colours
+ *   field     field-1..4 underlines and lane tints: which bytes belong to which field
+ *   heat      heat-0..5: how much a byte column varies between examples
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --pl-bg: #101112;
+  --pl-surface: #161718;
+  --pl-surface-2: #1d1f20;
+  --pl-line: #2b2e30;
+  --pl-line-strong: #5e6469;
+  --pl-text: #e6e7e4;
+  --pl-muted: #8e9296;
+  --pl-accent: #ff6a2b;
+  --pl-ok: #76c893;
+  --pl-warn: #e5a93b;
+  --pl-danger: #ff5c6a;
+  --pl-info: #94a9c2;
+  --pl-selection: #243b42;
+  --pl-unknown: #868a8e;
+  --pl-scrim: rgb(0 0 0 / 0.6);
+  --pl-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
 
-  --color-bg: #0a0d13;
-  --color-surface: #10141c;
-  --color-surface-2: #161b25;
-  --color-surface-3: #1e2431;
-  --color-line: #242c3a;
-  --color-line-strong: #34405a;
-  --color-fg: #e6e9ef;
-  --color-muted: #949db0;
-  --color-subtle: #646d81;
+  /* Channels: CH1 amber = client to server, CH2 cyan = server to client. */
+  --pl-ch-c2s: #e8c450;
+  --pl-ch-s2c: #4cc7d6;
 
-  --color-accent: #d0204e;
-  --color-accent-strong: #9b1030;
-  --color-glow: #f08a24;
+  /* Field underlines (hue avoids the channel colours and danger red) and their lane tints. */
+  --pl-field-1: #8fbde5;
+  --pl-field-2: #b8afe4;
+  --pl-field-3: #dba5c2;
+  --pl-field-4: #b7b7b7;
+  --pl-field-lane-1: #233849;
+  --pl-field-lane-2: #363249;
+  --pl-field-lane-3: #452d3a;
+  --pl-field-lane-4: #353535;
 
-  --color-success: #3fb97f;
-  --color-warning: #e3a33a;
-  --color-danger: #ef5a5f;
-  --color-info: #4c9aff;
-  --color-violet: #a78bfa;
+  /* Variability scale: constant (0) to changes every time (5). */
+  --pl-heat-0: #2e3032;
+  --pl-heat-1: #5c3a40;
+  --pl-heat-2: #a03a45;
+  --pl-heat-3: #dd5230;
+  --pl-heat-4: #f28e42;
+  --pl-heat-5: #f8c885;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --pl-bg: #eceae5;
+  --pl-surface: #f8f7f3;
+  --pl-surface-2: #f0eee9;
+  --pl-line: #d6d3cc;
+  --pl-line-strong: #8a867e;
+  --pl-text: #1a1a18;
+  --pl-muted: #5c5a55;
+  --pl-accent: #b83a08;
+  --pl-ok: #266b43;
+  --pl-warn: #8f5b00;
+  --pl-danger: #c21f36;
+  --pl-info: #3f5f82;
+  --pl-selection: #d4e6e8;
+  --pl-unknown: #5c5a55;
+  --pl-scrim: rgb(26 26 24 / 0.35);
+  --pl-shadow: 0 8px 24px rgb(26 26 24 / 0.12);
+
+  --pl-ch-c2s: #86600a;
+  --pl-ch-s2c: #007380;
+
+  --pl-field-1: #2b6ea1;
+  --pl-field-2: #6b5ca0;
+  --pl-field-3: #934e77;
+  --pl-field-4: #696969;
+  --pl-field-lane-1: #d8ebfb;
+  --pl-field-lane-2: #e8e5fb;
+  --pl-field-lane-3: #f8e0ec;
+  --pl-field-lane-4: #e8e8e8;
+
+  --pl-heat-0: #e4e1db;
+  --pl-heat-1: #f3d2c4;
+  --pl-heat-2: #ee9e88;
+  --pl-heat-3: #d4472a;
+  --pl-heat-4: #98201f;
+  --pl-heat-5: #5c101f;
+}
+
+@theme inline {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-sans: 'IBM Plex Sans Variable', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --color-bg: var(--pl-bg);
+  --color-surface: var(--pl-surface);
+  --color-surface-2: var(--pl-surface-2);
+  --color-line: var(--pl-line);
+  --color-line-strong: var(--pl-line-strong);
+  --color-fg: var(--pl-text);
+  --color-muted: var(--pl-muted);
+  --color-accent: var(--pl-accent);
+  --color-ok: var(--pl-ok);
+  --color-warn: var(--pl-warn);
+  --color-danger: var(--pl-danger);
+  --color-info: var(--pl-info);
+  --color-selection: var(--pl-selection);
+  --color-unknown: var(--pl-unknown);
+  --color-scrim: var(--pl-scrim);
+  --color-ch-c2s: var(--pl-ch-c2s);
+  --color-ch-s2c: var(--pl-ch-s2c);
+  --color-field-1: var(--pl-field-1);
+  --color-field-2: var(--pl-field-2);
+  --color-field-3: var(--pl-field-3);
+  --color-field-4: var(--pl-field-4);
+  --color-field-lane-1: var(--pl-field-lane-1);
+  --color-field-lane-2: var(--pl-field-lane-2);
+  --color-field-lane-3: var(--pl-field-lane-3);
+  --color-field-lane-4: var(--pl-field-lane-4);
+  --color-heat-0: var(--pl-heat-0);
+  --color-heat-1: var(--pl-heat-1);
+  --color-heat-2: var(--pl-heat-2);
+  --color-heat-3: var(--pl-heat-3);
+  --color-heat-4: var(--pl-heat-4);
+  --color-heat-5: var(--pl-heat-5);
+
+  /*
+   * Type scale: five steps, no arbitrary pixel sizes in components.
+   *   2xs 11  tags, counts, captions, ruler ticks
+   *   xs  12  secondary text, data in tables
+   *   sm  13  body (default)
+   *   lg  16  page title
+   *   xl  20  one key readout per screen
+   * The hex grid uses its own 13px mono so that the 26px cell geometry stays fixed.
+   */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+
+  /* Controls get 3px, panes and tables stay square. */
+  --radius-ctl: 3px;
+  --shadow-pop: var(--pl-shadow);
 }
 
 @layer base {
@@ -38,12 +173,14 @@
     color: var(--color-fg);
     font-family: var(--font-sans);
     font-size: 13px;
-    line-height: 1.45;
+    line-height: 20px;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+    background: var(--color-selection);
+    color: var(--color-fg);
   }
 
   * {
@@ -52,28 +189,66 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-glow);
+    outline: 2px solid var(--color-accent);
     outline-offset: 1px;
   }
 
   code,
   kbd,
-  pre {
+  pre,
+  samp {
     font-family: var(--font-mono);
+  }
+
+  /* Hex, offsets and values must never turn into ligatures. */
+  code,
+  kbd,
+  pre,
+  samp,
+  .font-mono {
+    font-variant-ligatures: none;
+  }
+
+  /* Numbers in tables line up by digit, in the sans text too. */
+  td,
+  th {
+    font-variant-numeric: tabular-nums;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
   }
 }
 
-@layer components {
-  /* Unknown bytes (capture gaps): hatched, never rendered as zeros. */
-  .bg-hatch {
-    background-image: repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--color-danger) 28%, transparent) 0 3px,
-      transparent 3px 6px
-    );
-  }
+/*
+ * Legends: column heads, field labels, small captions. The same Plex Sans with the width axis pulled
+ * to 85 (the "silkscreen" next to a knob): narrower than the text, so Russian labels do not wrap.
+ */
+@utility legend {
+  font-stretch: 85%;
+  letter-spacing: 0.01em;
+}
 
-  .brand-gradient {
-    background: radial-gradient(circle at 85% 50%, #f08a24 0%, #b2381f 32%, #6d1430 62%, #3a1a24 100%);
+/* Unknown bytes (capture gaps): hatched, never rendered as 00. */
+@utility bg-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-unknown) 60%, transparent) 0 1px,
+    transparent 1px 6px
+  );
+}
+
+/* Text link: the same colour as text, a quiet underline that sharpens on hover. */
+@utility link {
+  text-decoration-line: underline;
+  text-decoration-color: var(--color-line-strong);
+  text-underline-offset: 3px;
+
+  &:hover {
+    text-decoration-color: currentColor;
   }
 }

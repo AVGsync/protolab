@@ -1,5 +1,5 @@
 import { SourceRefLink } from '@/entities/observation';
-import { FindingKindBadge, type Finding } from '@/entities/verification';
+import { FindingKindMark, type Finding } from '@/entities/verification';
 import { formatNumber } from '@/shared/lib';
 import { EmptyState, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
@@ -8,10 +8,12 @@ export interface FindingsTableProps {
   findings: Finding[];
   /** Version used for framing when jumping to the source. */
   versionId: string;
+  /** Title of the empty state. */
+  empty?: string;
 }
 
-export function FindingsTable({ projectId, findings, versionId }: FindingsTableProps) {
-  if (findings.length === 0) return <EmptyState title="Нет находок этого типа" />;
+export function FindingsTable({ projectId, findings, versionId, empty = 'Нет находок этого типа' }: FindingsTableProps) {
+  if (findings.length === 0) return <EmptyState title={empty} />;
   return (
     <Table>
       <THead>
@@ -26,21 +28,21 @@ export function FindingsTable({ projectId, findings, versionId }: FindingsTableP
       <TBody>
         {findings.map((f) => (
           <Tr key={f.id} className="align-top">
-            <Td>
-              <FindingKindBadge kind={f.kind} />
+            <Td className="py-1.5">
+              <FindingKindMark kind={f.kind} />
             </Td>
-            <Td className="max-w-md">{f.message}</Td>
-            <Td className="font-mono text-[11.5px] text-muted">
+            <Td className="max-w-md min-w-56 py-1.5">{f.message}</Td>
+            <Td className="py-1.5 font-mono text-2xs text-muted">
               {f.ruleId ?? '—'}
               {f.fieldPath && <span className="text-fg">.{f.fieldPath}</span>}
             </Td>
-            <Td className="text-right font-mono">{formatNumber(f.occurrences)}</Td>
-            <Td>
+            <Td className="py-1.5 text-right font-mono">{formatNumber(f.occurrences)}</Td>
+            <Td className="py-1.5">
               <div className="flex flex-col gap-0.5">
                 {f.examples.slice(0, 3).map((ex, i) => (
                   <SourceRefLink key={i} projectId={projectId} source={ex} versionId={versionId} />
                 ))}
-                {f.examples.length > 3 && <span className="text-[11px] text-subtle">ещё {f.examples.length - 3}…</span>}
+                {f.examples.length > 3 && <span className="text-2xs text-muted">ещё {f.examples.length - 3}…</span>}
               </div>
             </Td>
           </Tr>

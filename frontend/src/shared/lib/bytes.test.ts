@@ -40,6 +40,14 @@ describe('integers', () => {
     expect(rows.find((r) => r.label === 'u16le')?.value).toBe('21');
     expect(rows.find((r) => r.label === 'u32le')?.value).toBe('21');
   });
+
+  it('only reads below the limit and never turns unknown bytes into numbers', () => {
+    const bytes = Uint8Array.from([0x15, 0x00, 0x00, 0x00]);
+    expect(decodeAt(bytes, 0, 2).map((r) => r.label)).toEqual(['u8', 'i8', 'u16le', 'u16be', 'i16le', 'i16be']);
+    const rows = decodeAt(bytes, 0, 4, buildMask(4, [{ offset: 1, length: 1 }]));
+    expect(rows.find((r) => r.label === 'u8')?.value).toBe('21');
+    expect(rows.find((r) => r.label === 'u16le')?.value).toBe('??');
+  });
 });
 
 describe('findValue', () => {
