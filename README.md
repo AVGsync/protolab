@@ -73,7 +73,7 @@ protolab --no-tui        # без TUI (сервисы, CI, Docker): журнал
 
 Каталог данных: `$PROTOLAB_DATA`, иначе `~/.local/share/protolab` (Linux, учитывает `XDG_DATA_HOME`),
 `~/Library/Application Support/ProtoLab` (macOS), `%LOCALAPPDATA%\ProtoLab` (Windows).
-Каждый проект — папка `projects/<id>/` с `project.json`, исходными записями `captures/<sha256>.pcapng`
+Каждый проект — папка `projects/<id>/` с `project.json`, исходными записями `captures/<sha256>.pcap` или `.pcapng` (расширение по формату записи)
 и отчётами `reports/`.
 
 ## Командная строка без интерфейса
