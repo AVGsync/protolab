@@ -2,7 +2,7 @@ import type { Direction, Endpoint } from '@/shared/api';
 import { cn } from '@/shared/lib';
 import { Arrow, Status, Tag } from '@/shared/ui';
 import { DIRECTION_LABEL } from '../model/labels';
-import { sessionAnomalies } from '../model/anomalies';
+import { describeAnomalies, sessionAnomalies } from '../model/anomalies';
 import type { RoleCertainty, SessionFlags, SessionStatus } from '../model/types';
 
 /** A complete session is the normal state and stays silent. */
@@ -21,6 +21,17 @@ export function SessionAnomalyMark({ flags, roles }: { flags: SessionFlags; role
       <Status tone={first.tone}>{first.text}</Status>
       {rest.length > 0 && <Tag>+{rest.length}</Tag>}
     </span>
+  );
+}
+
+/** One plain sentence about everything unusual in the session; nothing when the session is clean. */
+export function SessionAnomalySentence({ flags, roles, className }: { flags: SessionFlags; roles?: RoleCertainty; className?: string }) {
+  const anomalies = sessionAnomalies(flags, roles);
+  if (anomalies.length === 0) return null;
+  return (
+    <Status tone={anomalies[0].tone} className={cn('max-w-full', className)}>
+      <span className="truncate">{describeAnomalies(anomalies)}</span>
+    </Status>
   );
 }
 
