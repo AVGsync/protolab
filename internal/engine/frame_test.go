@@ -20,7 +20,7 @@ func frameAll(t *testing.T, framingJSON string, data []byte, gaps []model.Stream
 	st.frameStream(&c.framing)
 	got := make([]wantFrame, len(st.frames))
 	for i, f := range st.frames {
-		got[i] = wantFrame{offset: f.offset, length: f.length, partial: f.partial, issues: f.issues}
+		got[i] = wantFrame{offset: f.offset, length: f.length, partial: f.partial, issues: st.issuesOf(&f)}
 	}
 	return got, st.unframed
 }

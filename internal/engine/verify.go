@@ -51,11 +51,10 @@ func verify(ctx context.Context, s *spec.Spec, inputs []SessionInput, progress f
 		default:
 			// A failure in one session must not block the rest of the corpus.
 			sessionsWithErrors++
-			total.bucket("engine:"+in.Session.ID, model.Finding{
-				Kind:     model.FindingCaptureDefect,
-				Severity: model.LevelError,
-				Message:  "Ошибка обработки сессии: " + err.Error(),
-			})
+			if f, isNew := total.bucket(findingKey{kind: "engine", a: in.Session.ID}); isNew {
+				f.Kind, f.Severity = model.FindingCaptureDefect, model.LevelError
+				f.Message = "Ошибка обработки сессии: " + err.Error()
+			}
 		}
 		if progress != nil {
 			progress(i+1, len(inputs))
@@ -91,15 +90,15 @@ func (c *compiled) verifySession(ctx context.Context, in *SessionInput) (t *tall
 	t.captureDefects(sess)
 	for _, u := range sess.unframed {
 		t.unknownBytes += u.Length
-		f := t.bucket("unframed", model.Finding{
-			Kind:     model.FindingUnknownRegion,
-			Severity: model.LevelWarning,
-			Message:  "Байты вне сообщений: синхронизация кадров потеряна (начало не захвачено или пропуск)",
-		})
+		f, isNew := t.bucket(findingKey{kind: "unframed"})
+		if isNew {
+			f.Kind, f.Severity = model.FindingUnknownRegion, model.LevelWarning
+			f.Message = "Байты вне сообщений: синхронизация кадров потеряна (начало не захвачено или пропуск)"
+		}
 		t.example(f, sess, sess.streamOf(u.Direction), u.Offset, u.Length)
 	}
 
-	b := c.newBuilder(in)
+	b := c.newBuilder(in, true)
 	for i, ref := range sess.order {
 		if i&0xfff == 0xfff && ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -131,11 +130,20 @@ func (s *session) ref(st *stream, offset, length int) model.SourceRef {
 	}
 }
 
+// findingKey identifies a group of identical findings. The fields hold what
+// distinguishes findings of one kind (rule, field path, check, ...); a struct
+// key avoids building a string per message.
+type findingKey struct {
+	kind    string
+	a, b, c string
+	n       int
+}
+
 // tally accumulates verification results: of one session, or of the corpus.
 type tally struct {
-	keys     map[string]int  // finding key -> index into findings
-	keyOrder []string        // keys in order of first occurrence
-	findings []model.Finding // in order of first occurrence
+	keys     map[findingKey]int // index into findings
+	keyOrder []findingKey       // keys in order of first occurrence
+	findings []model.Finding    // in order of first occurrence
 
 	messages, ok, violations, partial, ambiguous, unknownType int
 	unknownBytes, totalBytes                                  int
@@ -144,23 +152,22 @@ type tally struct {
 }
 
 func newTally(rules int) *tally {
-	return &tally{keys: make(map[string]int), matched: make([]int, rules), ruleViolations: make([]int, rules)}
+	return &tally{keys: make(map[findingKey]int), matched: make([]int, rules), ruleViolations: make([]int, rules)}
 }
 
-// bucket counts one occurrence of the finding identified by key; init
-// describes the finding when the key is seen for the first time.
-func (t *tally) bucket(key string, init model.Finding) *model.Finding {
+// bucket counts one occurrence of the finding identified by key. isNew tells
+// the caller to describe the finding: the first occurrence defines it.
+func (t *tally) bucket(key findingKey) (f *model.Finding, isNew bool) {
 	i, ok := t.keys[key]
 	if !ok {
 		i = len(t.findings)
 		t.keys[key] = i
 		t.keyOrder = append(t.keyOrder, key)
-		init.Examples = []model.SourceRef{}
-		t.findings = append(t.findings, init)
+		t.findings = append(t.findings, model.Finding{Examples: []model.SourceRef{}})
 	}
-	f := &t.findings[i]
+	f = &t.findings[i]
 	f.Occurrences++
-	return f
+	return f, !ok
 }
 
 func (t *tally) example(f *model.Finding, s *session, st *stream, offset, length int) {
@@ -205,17 +212,24 @@ func (t *tally) captureDefects(s *session) {
 	for _, st := range s.streams {
 		for _, g := range st.gaps {
 			t.hasErrors = true
-			msg := "Потерянные сегменты — участки потока неизвестны"
-			if g.Reason == model.GapTruncated {
-				msg = "Пакеты усечены при захвате — хвосты неизвестны"
+			f, isNew := t.bucket(findingKey{kind: "gap", a: g.Reason})
+			if isNew {
+				f.Kind, f.Severity = model.FindingCaptureDefect, model.LevelWarning
+				f.Message = "Потерянные сегменты — участки потока неизвестны"
+				if g.Reason == model.GapTruncated {
+					f.Message = "Пакеты усечены при захвате — хвосты неизвестны"
+				}
 			}
-			f := t.bucket("gap:"+g.Reason, model.Finding{Kind: model.FindingCaptureDefect, Severity: model.LevelWarning, Message: msg})
 			t.example(f, s, st, g.Offset, g.Length)
 		}
 	}
 	if s.in.Session.Flags.OverlapConflicts > 0 {
 		t.hasErrors = true
-		f := t.bucket("conflict", model.Finding{Kind: model.FindingCaptureDefect, Severity: model.LevelWarning, Message: "Повторные передачи с разными данными"})
+		f, isNew := t.bucket(findingKey{kind: "conflict"})
+		if isNew {
+			f.Kind, f.Severity = model.FindingCaptureDefect, model.LevelWarning
+			f.Message = "Повторные передачи с разными данными"
+		}
 		// Conflict ranges are not part of the input; the example points at the session.
 		t.example(f, s, s.streams[0], 0, 1)
 	}
@@ -224,10 +238,9 @@ func (t *tally) captureDefects(s *session) {
 func (t *tally) message(c *compiled, s *session, st *stream, m *model.Message) {
 	t.messages++
 	t.totalBytes += m.Length
-	ruleID := "null"
+	ruleID := derefOr(m.RuleID)
 	stat := -1
 	if m.RuleID != nil {
-		ruleID = *m.RuleID
 		if i, ok := c.ruleIndex[ruleID]; ok {
 			stat = i
 			t.matched[i]++
@@ -244,28 +257,30 @@ func (t *tally) message(c *compiled, s *session, st *stream, m *model.Message) {
 		}
 	case model.MsgPartial:
 		t.partial++
-		msg := "Сообщение неполное"
-		if len(m.Issues) > 0 {
-			msg = m.Issues[0]
+		f, isNew := t.bucket(findingKey{kind: "partial", a: ruleID})
+		if isNew {
+			f.Kind, f.Severity, f.RuleID = model.FindingPartial, model.LevelWarning, ruleID
+			f.Message = "Сообщение неполное"
+			if len(m.Issues) > 0 {
+				f.Message = m.Issues[0]
+			}
 		}
-		f := t.bucket("partial:"+ruleID, model.Finding{Kind: model.FindingPartial, Severity: model.LevelWarning, RuleID: derefOr(m.RuleID), Message: msg})
 		t.example(f, s, st, m.Offset, m.Length)
 	case model.MsgAmbiguous:
 		t.ambiguous++
-		f := t.bucket("ambiguous:"+strings.Join(m.CandidateRuleIDs, ","), model.Finding{
-			Kind:     model.FindingAmbiguous,
-			Severity: model.LevelWarning,
-			Message:  "Подходят несколько правил: " + strings.Join(m.CandidateRuleIDs, ", "),
-		})
+		f, isNew := t.bucket(findingKey{kind: "ambiguous", a: strings.Join(m.CandidateRuleIDs, ",")})
+		if isNew {
+			f.Kind, f.Severity = model.FindingAmbiguous, model.LevelWarning
+			f.Message = "Подходят несколько правил: " + strings.Join(m.CandidateRuleIDs, ", ")
+		}
 		t.example(f, s, st, m.Offset, m.Length)
 	case model.MsgUnknownType:
 		t.unknownType++
-		head := messageHead(st, m)
-		f := t.bucket("unknown_type:"+string(m.Direction)+":"+head, model.Finding{
-			Kind:     model.FindingUnknownType,
-			Severity: model.LevelInfo,
-			Message:  directionLabel(m.Direction) + ": сообщения «" + head + " …» не описаны ни одним правилом",
-		})
+		f, isNew := t.bucket(findingKey{kind: "unknown_type", a: string(m.Direction), n: headCode(st, m)})
+		if isNew {
+			f.Kind, f.Severity = model.FindingUnknownType, model.LevelInfo
+			f.Message = directionLabel(m.Direction) + ": сообщения «" + messageHead(st, m) + " …» не описаны ни одним правилом"
+		}
 		t.example(f, s, st, m.Offset, m.Length)
 	}
 	if m.Status != model.MsgOK && m.Status != model.MsgUnknownType {
@@ -289,17 +304,14 @@ func (t *tally) fieldViolations(s *session, st *stream, m *model.Message, ruleID
 		pf := &fields[i]
 		if pf.Status == model.FieldViolation {
 			path := genericPath(pf.Path)
-			msg := pf.Issue
-			if msg == "" {
-				msg = "Нарушение правила"
+			f, isNew := t.bucket(findingKey{kind: "violation", a: ruleID, b: path, c: issueKind(pf.Issue)})
+			if isNew {
+				f.Kind, f.Severity, f.RuleID, f.FieldPath = model.FindingViolation, model.LevelError, ruleID, path
+				f.Message = pf.Issue
+				if f.Message == "" {
+					f.Message = "Нарушение правила"
+				}
 			}
-			f := t.bucket("violation:"+ruleID+":"+path+":"+issueKind(pf.Issue), model.Finding{
-				Kind:      model.FindingViolation,
-				Severity:  model.LevelError,
-				RuleID:    derefOr(m.RuleID),
-				FieldPath: path,
-				Message:   msg,
-			})
 			offset, length := m.Offset+pf.Offset, pf.Length
 			if pf.Offset < 0 || pf.Length < 0 || pf.Offset+pf.Length > m.Length {
 				// The field does not fit: point at the message it was expected in.
@@ -314,21 +326,20 @@ func (t *tally) fieldViolations(s *session, st *stream, m *model.Message, ruleID
 func (t *tally) unknownRegion(s *session, st *stream, m *model.Message, ruleID string, u model.ByteRange) {
 	t.unknownBytes += u.Length
 	fromEnd := u.End() == m.Length
-	where := "байты " + strconv.Itoa(u.Offset) + "–" + strconv.Itoa(u.End()-1)
-	if fromEnd && u.Length == 1 {
-		where = "последний байт"
-	}
 	// Regions at the end of variable-length messages share a key by their size.
-	pos := strconv.Itoa(u.Offset)
+	key := findingKey{kind: "unknown_region", a: ruleID, n: u.Offset}
 	if fromEnd {
-		pos = "end-" + strconv.Itoa(u.Length)
+		key.n = -u.Length
 	}
-	f := t.bucket("unknown_region:"+ruleID+":"+pos, model.Finding{
-		Kind:     model.FindingUnknownRegion,
-		Severity: model.LevelInfo,
-		RuleID:   ruleID,
-		Message:  ruleID + ": " + where + " не описаны полями",
-	})
+	f, isNew := t.bucket(key)
+	if isNew {
+		where := "байты " + strconv.Itoa(u.Offset) + "–" + strconv.Itoa(u.End()-1)
+		if fromEnd && u.Length == 1 {
+			where = "последний байт"
+		}
+		f.Kind, f.Severity, f.RuleID = model.FindingUnknownRegion, model.LevelInfo, ruleID
+		f.Message = ruleID + ": " + where + " не описаны полями"
+	}
 	t.example(f, s, st, m.Offset+u.Offset, u.Length)
 }
 
@@ -354,12 +365,10 @@ func (t *tally) result(c *compiled, sessions, sessionsWithErrors int) Result {
 		}
 	}
 	for _, id := range sum.InapplicableRules {
-		t.bucket("inapplicable:"+id, model.Finding{
-			Kind:     model.FindingInapplicableRule,
-			Severity: model.LevelInfo,
-			RuleID:   id,
-			Message:  "Правило «" + id + "» не сработало ни на одном сообщении корпуса — его корректность не проверена",
-		})
+		if f, isNew := t.bucket(findingKey{kind: "inapplicable", a: id}); isNew {
+			f.Kind, f.Severity, f.RuleID = model.FindingInapplicableRule, model.LevelInfo, id
+			f.Message = "Правило «" + id + "» не сработало ни на одном сообщении корпуса — его корректность не проверена"
+		}
 	}
 
 	findings := t.findings
@@ -374,6 +383,23 @@ func (t *tally) result(c *compiled, sessions, sessionsWithErrors int) Result {
 		findings = []model.Finding{}
 	}
 	return Result{Summary: sum, Findings: findings}
+}
+
+// headCode packs what messageHead shows into an int for the finding key.
+func headCode(st *stream, m *model.Message) int {
+	code := 0
+	for i := range 2 {
+		c := 257 // absent
+		switch {
+		case i >= len(m.Data):
+		case st.unknown != nil && st.unknown[m.Offset+i] == 1:
+			c = 256
+		default:
+			c = int(m.Data[i])
+		}
+		code = code*512 + c
+	}
+	return code
 }
 
 // messageHead shows the first two bytes of a message, "??" for unknown ones.
