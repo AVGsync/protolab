@@ -35,12 +35,16 @@ type Unframed struct {
 	Length    int
 }
 
+// ParsedSession is the result of ParseSession. Both slices are never nil.
 type ParsedSession struct {
 	Messages []model.Message // both directions, ordered by time; Index assigned
 	Unframed []Unframed
 }
 
-// ParseSession frames and parses both directions of a session.
+// ParseSession frames and parses both directions of a session. Messages own
+// a copy of their bytes; integer field values are int64, bytes/ascii values
+// are strings. A nil or invalid spec yields no messages and leaves the whole
+// stream unframed instead of failing.
 func ParseSession(s *spec.Spec, in SessionInput) ParsedSession { return parseSession(s, in) }
 
 // Result of a verification run. Finding.ID and Finding.RunID are left empty.
@@ -50,7 +54,8 @@ type Result struct {
 }
 
 // Verify applies the spec to every session of a corpus. progress may be nil.
-// It returns ctx.Err() if cancelled.
+// It returns ctx.Err() if cancelled. A panic while processing one session is
+// recovered and reported as a capture_defect finding; the run continues.
 func Verify(ctx context.Context, s *spec.Spec, inputs []SessionInput, progress func(done, total int)) (Result, error) {
 	return verify(ctx, s, inputs, progress)
 }
