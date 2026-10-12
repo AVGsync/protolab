@@ -72,17 +72,27 @@ func (ng *ngReader) next() (Packet, error) {
 		case blockIDB:
 			err = ng.addInterface(body)
 		case blockEPB:
-			return ng.enhancedPacket(body)
+			return ng.skippable(ng.enhancedPacket(body))
 		case blockOPB:
-			return ng.obsoletePacket(body)
+			return ng.skippable(ng.obsoletePacket(body))
 		case blockSPB:
-			return ng.simplePacket(body)
+			return ng.skippable(ng.simplePacket(body))
 		}
 		// Name resolution, statistics, custom and unknown blocks carry nothing we need.
 		if err != nil {
 			return Packet{}, err
 		}
 	}
+}
+
+// skippable turns the error of a packet block, which was read whole, into a
+// PacketError: the next block starts right after it.
+func (ng *ngReader) skippable(p Packet, err error) (Packet, error) {
+	if err != nil {
+		ng.number++
+		return Packet{}, &PacketError{Number: ng.number, Err: err}
+	}
+	return p, nil
 }
 
 // readBlock reads one block and returns its type and body (without the leading

@@ -30,7 +30,7 @@ func TestCaptureFileEndToEnd(t *testing.T) {
 		{true, SA, si, c1, "", false},
 		{false, A, c1, s1, "", false},
 		{false, PA, c1, s1, "READ 0001\n", false},         // 4
-		{true, PA, s1, c1 + 10, "part-one;", true},        // 5: offloaded checksum
+		{true, PA, s1, c1 + 10, "part-one;", true},        // 5: damaged checksum, the other server frames verify
 		{true, PA, s1 + 18, c1 + 10, "part-three", false}, // 6: part two is late
 		{true, PA, s1 + 9, c1 + 10, "part-two;", false},   // 7
 		{true, PA, s1 + 9, c1 + 10, "part-two;", false},   // 8: duplicate
@@ -101,7 +101,7 @@ func TestCaptureFileEndToEnd(t *testing.T) {
 		t.Errorf("length=%d closed=%v handshake=%v status=%s", len(c2s.Data), s.Closed, s.Handshake, s.Status)
 	}
 	got := codes(s)
-	if want := []string{codeTruncated, codeChecksumOffload}; !slices.Equal(got, want) {
+	if want := []string{codeTruncated, codeChecksumBad}; !slices.Equal(got, want) {
 		t.Errorf("diagnostics = %v, want %v", got, want)
 	}
 }

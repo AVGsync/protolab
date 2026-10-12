@@ -1,15 +1,18 @@
 package tcpflow
 
 import (
+	"fmt"
 	"net/netip"
 	"slices"
 
+	"github.com/AVGsync/protolab/internal/model"
 	"github.com/AVGsync/protolab/internal/netpkt"
 )
 
 // options are the normalised Options.
 type options struct {
 	last        bool // PolicyLast
+	noChecksums bool // ChecksumIgnore
 	targetPorts map[uint16]bool
 	maxBytes    int64
 }
@@ -17,6 +20,7 @@ type options struct {
 func normalize(opt Options) *options {
 	o := &options{
 		last:        opt.OverlapPolicy == PolicyLast,
+		noChecksums: opt.ChecksumPolicy == ChecksumIgnore,
 		targetPorts: make(map[uint16]bool, len(opt.TargetPorts)),
 		maxBytes:    int64(opt.MaxStreamBytes),
 	}
@@ -55,6 +59,9 @@ func keyOf(a, b netip.AddrPort) connKey {
 func (a *assembler) add(in Input) {
 	seg := &in.Seg
 	seg.PayloadLen = max(seg.PayloadLen, len(seg.Payload))
+	if a.opt.noChecksums && seg.Checksum == netpkt.ChecksumBad {
+		seg.Checksum = netpkt.ChecksumOK
+	}
 	// Keep a private copy: the caller may reuse its frame buffers, and copying only
 	// the payload lets the frames themselves be freed.
 	seg.Payload = a.arena.copy(seg.Payload)
@@ -76,11 +83,59 @@ func (a *assembler) finish() []*Session {
 	slices.SortStableFunc(conns, func(x, y *conn) int { return x.inputs[0].Number - y.inputs[0].Number })
 	sessions := make([]*Session, len(conns))
 	for i, c := range conns {
-		sessions[i] = buildSession(c, a.opt)
+		sessions[i] = safeBuild(c, a.opt)
 		sessions[i].Index = i
 		conns[i] = nil // sessions keep no reference to the inputs or payload copies
 	}
 	return sessions
+}
+
+// build is buildSession; tests replace it to simulate a defect.
+var build = buildSession
+
+// safeBuild isolates the sessions from each other: a failure while
+// reassembling one connection yields that session with status "error" and
+// its packets, the other sessions are not affected.
+func safeBuild(c *conn, opt *options) (s *Session) {
+	defer func() {
+		if v := recover(); v != nil {
+			s = failedSession(c, v)
+		}
+	}()
+	return build(c, opt)
+}
+
+func failedSession(c *conn, cause any) *Session {
+	s := &Session{
+		Client: c.key.lo, Server: c.key.hi, Roles: RolesUnknown, Status: statusError,
+		Packets: make([]Packet, len(c.inputs)),
+		Diagnostics: []model.Diagnostic{{
+			Level:   model.LevelError,
+			Code:    codeReassemblyFailed,
+			Message: fmt.Sprintf("Внутренняя ошибка сборки соединения (%v): байты потоков не восстановлены, пакеты сохранены", cause),
+		}},
+	}
+	if c.hasSyn {
+		s.Client = c.synFrom
+		if s.Client == c.key.hi {
+			s.Server = c.key.lo
+		}
+	}
+	s.Start, s.End = timeSpan(c.inputs)
+	for i, in := range c.inputs {
+		dir := model.S2C
+		if in.Seg.Src == s.Client {
+			dir = model.C2S
+		}
+		s.Packets[i] = Packet{
+			Number: in.Number, Timestamp: in.Timestamp, Dir: dir, Flags: in.Seg.Flags,
+			Seq: in.Seg.Seq, Ack: in.Seg.Ack, PayloadLen: in.Seg.PayloadLen, StreamOffset: -1, Annotations: []string{},
+		}
+	}
+	for i, dir := range model.Directions {
+		s.Streams[i] = &Stream{Dir: dir, Data: []byte{}, Segments: []Segment{}, Gaps: []Gap{}, Conflicts: []Conflict{}}
+	}
+	return s
 }
 
 // conn is one connection instance while segments are being collected. It keeps
@@ -92,6 +147,7 @@ type conn struct {
 	hasSyn  bool // client SYN (SYN without ACK)
 	synFrom netip.AddrPort
 	synSeq  uint32
+	synData uint32 // payload carried by the SYN (TCP Fast Open)
 
 	hasSynAck  bool
 	synAckFrom netip.AddrPort
@@ -100,6 +156,10 @@ type conn struct {
 
 	finLo, finHi bool // FIN sent by key.lo / key.hi
 	rst          bool
+
+	// Sequence number of the first segment sent by key.lo / key.hi.
+	firstLo, firstHi uint32
+	seenLo, seenHi   bool
 }
 
 func (c *conn) closed() bool { return c.rst || (c.finLo && c.finHi) }
@@ -112,8 +172,9 @@ func (c *conn) opensNewInstance(s *netpkt.Segment) bool {
 		return !c.acceptsSyn(s)
 	case s.Flags.Has(netpkt.SYN | netpkt.ACK):
 		// Normally the SYN opened the instance already; this catches port reuse
-		// when the new connection's SYN was not captured.
-		return c.closed() && !c.acceptsSynAck(s)
+		// when the new connection's SYN was not captured, whether or not the
+		// old instance was seen closing.
+		return !c.acceptsSynAck(s)
 	}
 	return false
 }
@@ -130,10 +191,32 @@ func (c *conn) acceptsSyn(s *netpkt.Segment) bool {
 }
 
 func (c *conn) acceptsSynAck(s *netpkt.Segment) bool {
-	if c.hasSynAck {
-		return s.Src == c.synAckFrom && s.Seq == c.synAckSeq
+	switch {
+	case c.hasSynAck:
+		return s.Src == c.synAckFrom && s.Seq == c.synAckSeq // retransmitted SYN-ACK
+	case c.hasSyn:
+		// The SYN-ACK acknowledges the SYN and, with TCP Fast Open, maybe its data.
+		return s.Src != c.synFrom && s.Ack-(c.synSeq+1) <= c.synData
+	case c.closed():
+		return false
 	}
-	return c.hasSyn && s.Src != c.synFrom && s.Ack == c.synSeq+1
+	// The instance was picked up without a handshake. A SYN-ACK belongs to it
+	// only when it was retransmitted right after the handshake, before the
+	// segments already seen: they then continue its sequence numbers.
+	const slack = 1 << 20
+	if first, ok := c.firstSeq(s.Dst); ok && first-s.Ack < slack {
+		return true
+	}
+	first, ok := c.firstSeq(s.Src)
+	return ok && first-(s.Seq+1) < slack
+}
+
+// firstSeq returns the sequence number of the first segment sent by ep.
+func (c *conn) firstSeq(ep netip.AddrPort) (uint32, bool) {
+	if ep == c.key.lo {
+		return c.firstLo, c.seenLo
+	}
+	return c.firstHi, c.seenHi
 }
 
 func (c *conn) add(in Input) {
@@ -141,16 +224,20 @@ func (c *conn) add(in Input) {
 	s := &in.Seg
 	switch {
 	case s.Flags.Has(netpkt.SYN) && !s.Flags.Has(netpkt.ACK) && !c.hasSyn:
-		c.hasSyn, c.synFrom, c.synSeq = true, s.Src, s.Seq
+		c.hasSyn, c.synFrom, c.synSeq, c.synData = true, s.Src, s.Seq, uint32(s.PayloadLen)
 	case s.Flags.Has(netpkt.SYN|netpkt.ACK) && !c.hasSynAck:
 		c.hasSynAck, c.synAckFrom, c.synAckSeq, c.synAckAck = true, s.Src, s.Seq, s.Ack
 	}
-	if s.Flags.Has(netpkt.FIN) {
-		if s.Src == c.key.lo {
-			c.finLo = true
-		} else {
-			c.finHi = true
+	if s.Src == c.key.lo {
+		if !c.seenLo {
+			c.firstLo, c.seenLo = s.Seq, true
 		}
+		c.finLo = c.finLo || s.Flags.Has(netpkt.FIN)
+	} else {
+		if !c.seenHi {
+			c.firstHi, c.seenHi = s.Seq, true
+		}
+		c.finHi = c.finHi || s.Flags.Has(netpkt.FIN)
 	}
 	if s.Flags.Has(netpkt.RST) {
 		c.rst = true

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 )
@@ -333,5 +334,54 @@ func TestReaderDataIsNotReused(t *testing.T) {
 	}
 	if !bytes.Equal(pkts[0].Data, []byte{1, 1, 1, 1}) {
 		t.Errorf("first packet data overwritten: %v", pkts[0].Data)
+	}
+}
+
+func TestNgDamagedPacketBlocksAreSkipped(t *testing.T) {
+	g := &ngBuilder{order: binary.LittleEndian}
+	g.shb().idb(LinkTypeEthernet, 0).
+		epb(0, 1, []byte{1}, 1).
+		epb(7, 2, []byte{2}, 1) // undeclared interface
+	var body []byte
+	body = g.order.AppendUint32(body, 0)
+	body = g.order.AppendUint64(body, 3)
+	body = g.order.AppendUint32(body, 100) // captured length beyond the block
+	body = g.order.AppendUint32(body, 100)
+	g.block(blockEPB, append(body, 3, 3, 3, 3))
+	g.block(0x00000bad, []byte("unknown block type")).
+		idb(LinkTypeRaw, 0, g.option(optTsResol, []byte{9})). // a second interface mid-file
+		epb(1, 4, []byte{4}, 1).
+		epb(0, 5, []byte{5, 5, 5, 5, 5, 5, 5, 5}, 8)
+	g.b = g.b[:len(g.b)-6] // the capture was cut while writing the last block
+
+	r, err := NewReader(bytes.NewReader(g.b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int
+	var skipped []int
+	for {
+		p, err := r.Next()
+		var pe *PacketError
+		switch {
+		case err == nil:
+			got = append(got, p.Number)
+			continue
+		case errors.As(err, &pe):
+			if !errors.Is(err, ErrCorrupt) {
+				t.Errorf("packet error %v does not wrap ErrCorrupt", err)
+			}
+			skipped = append(skipped, pe.Number)
+			continue
+		case !errors.Is(err, ErrTruncatedFile):
+			t.Fatalf("err = %v, want ErrTruncatedFile at the end", err)
+		}
+		break
+	}
+	if !slices.Equal(got, []int{1, 4}) || !slices.Equal(skipped, []int{2, 3}) {
+		t.Errorf("read %v, skipped %v; want [1 4] and [2 3]", got, skipped)
+	}
+	if ifs := r.Interfaces(); len(ifs) != 2 || ifs[1].TsResolution != time.Nanosecond {
+		t.Errorf("interfaces = %+v", ifs)
 	}
 }

@@ -22,7 +22,9 @@ const (
 	codeOverlapConflict  = "overlap_conflict"
 	codeMissingHandshake = "missing_handshake"
 	codeChecksumOffload  = "checksum_offload"
+	codeChecksumBad      = "checksum_error"
 	codeStreamTooLarge   = "stream_too_large"
+	codeReassemblyFailed = "reassembly_failed"
 )
 
 const (
@@ -34,7 +36,7 @@ const (
 	maxPacketRefs = 10
 )
 
-func (b *builder) session(packets []Packet, badChecksums int) *Session {
+func (b *builder) session(packets []Packet, checks checksumStats) *Session {
 	s := &Session{
 		Client:    b.client,
 		Server:    b.server(),
@@ -47,8 +49,8 @@ func (b *builder) session(packets []Packet, badChecksums int) *Session {
 	for i, h := range b.halves {
 		s.Streams[i] = h.stream()
 	}
-	s.Status = b.status(s)
-	s.Diagnostics = b.diagnostics(s, badChecksums)
+	s.Status = b.status(s, checks)
+	s.Diagnostics = b.diagnostics(s, checks)
 	return s
 }
 
@@ -67,9 +69,12 @@ func timeSpan(inputs []Input) (start, end time.Time) {
 	return start, end
 }
 
-func (b *builder) status(s *Session) string {
+func (b *builder) status(s *Session, checks checksumStats) string {
 	if b.halves[0].tooLarge || b.halves[1].tooLarge {
 		return statusError
+	}
+	if checks.unverified {
+		return statusPartial
 	}
 	for _, st := range s.Streams {
 		if len(st.Gaps) > 0 || len(st.Conflicts) > 0 {
@@ -88,7 +93,7 @@ var missingHandshakeMessages = map[roleSource]string{
 	byFirstSender: "Начало соединения не захвачено: роли сторон не установлены, первые байты потока неизвестны",
 }
 
-func (b *builder) diagnostics(s *Session, badChecksums int) []model.Diagnostic {
+func (b *builder) diagnostics(s *Session, checks checksumStats) []model.Diagnostic {
 	diags := []model.Diagnostic{}
 	if msg, ok := missingHandshakeMessages[b.source]; ok {
 		diags = append(diags, model.Diagnostic{Level: model.LevelWarning, Code: codeMissingHandshake, Message: msg})
@@ -105,12 +110,22 @@ func (b *builder) diagnostics(s *Session, badChecksums int) []model.Diagnostic {
 			})
 		}
 	}
-	if badChecksums > 0 {
+	if checks.offloaded > 0 {
 		diags = append(diags, model.Diagnostic{
 			Level:   model.LevelInfo,
 			Code:    codeChecksumOffload,
 			Message: "Неверная контрольная сумма TCP — вероятно checksum offloading на узле захвата; данные используются",
-			Count:   badChecksums,
+			Count:   checks.offloaded,
+		})
+	}
+	if checks.damaged > 0 {
+		diags = append(diags, model.Diagnostic{
+			Level: model.LevelWarning,
+			Code:  codeChecksumBad,
+			Message: "Неверная контрольная сумма TCP у пакетов отправителя, чьи остальные пакеты верны — вероятно повреждение: " +
+				"их номера последовательности и подтверждения не учитываются, байты используются, только если нет копии с верной суммой",
+			Count:         checks.damaged,
+			PacketNumbers: checks.damagedRef,
 		})
 	}
 	return diags

@@ -14,6 +14,7 @@ type span struct {
 	start, end int64
 	owner      int   // packet whose bytes are in the stream data
 	rivals     []int // packets that carried different bytes for this range
+	weak       bool  // the owner failed the checksum check (builder.suspect)
 }
 
 // rng is a half-open range [start, end).
@@ -134,8 +135,15 @@ type placement struct {
 	won        bool  // and this packet's copy replaced them (PolicyLast)
 }
 
+// copyTo is the copy of s narrowed to [start, end).
+func (s span) copyTo(start, end int64) span {
+	s.start, s.end = start, end
+	return s
+}
+
 // place merges payload, which starts at stream offset off, into the stream.
-func (h *half) place(off int64, payload []byte, pkt int, last bool) placement {
+// weak marks a copy that failed the checksum check (builder.suspect).
+func (h *half) place(off int64, payload []byte, pkt int, last, weak bool) placement {
 	from, to := max(off, 0), min(off+int64(len(payload)), h.length)
 	if from >= to {
 		return placement{}
@@ -143,7 +151,7 @@ func (h *half) place(off int64, payload []byte, pkt int, last bool) placement {
 	if from >= h.capturedEnd() {
 		// In-order data, the common case: nothing to compare against.
 		copy(h.data[from:to], payload[from-off:to-off])
-		h.spans = appendSpan(h.spans, span{start: from, end: to, owner: pkt})
+		h.spans = appendSpan(h.spans, span{start: from, end: to, owner: pkt, weak: weak})
 		return placement{fresh: to - from, firstFresh: from}
 	}
 
@@ -155,43 +163,48 @@ func (h *half) place(off int64, payload []byte, pkt int, last bool) placement {
 	for ; j < len(h.spans) && h.spans[j].start < to; j++ {
 		s := h.spans[j]
 		if s.start < cur {
-			out = appendSpan(out, span{s.start, cur, s.owner, s.rivals})
+			out = appendSpan(out, s.copyTo(s.start, cur))
 		} else if s.start > cur {
-			out = h.fill(out, cur, s.start, off, payload, pkt, &p)
+			out = h.fill(out, cur, s.start, off, payload, pkt, weak, &p)
 		}
 		ovFrom, ovTo := max(s.start, cur), min(s.end, to)
-		out = h.compare(out, s, ovFrom, ovTo, off, payload, pkt, last, &p)
+		out = h.compare(out, s, ovFrom, ovTo, off, payload, pkt, last, weak, &p)
 		if s.end > to {
-			out = appendSpan(out, span{to, s.end, s.owner, s.rivals})
+			out = appendSpan(out, s.copyTo(to, s.end))
 		}
 		cur = ovTo
 	}
 	if cur < to {
-		out = h.fill(out, cur, to, off, payload, pkt, &p)
+		out = h.fill(out, cur, to, off, payload, pkt, weak, &p)
 	}
 	h.spans = slices.Replace(h.spans, i, j, out...)
 	return p
 }
 
 // fill writes bytes nobody delivered before.
-func (h *half) fill(out []span, from, to, off int64, payload []byte, pkt int, p *placement) []span {
+func (h *half) fill(out []span, from, to, off int64, payload []byte, pkt int, weak bool, p *placement) []span {
 	copy(h.data[from:to], payload[from-off:to-off])
 	if p.fresh == 0 {
 		p.firstFresh = from
 	}
 	p.fresh += to - from
-	return appendSpan(out, span{start: from, end: to, owner: pkt})
+	return appendSpan(out, span{start: from, end: to, owner: pkt, weak: weak})
 }
 
 // compare checks bytes of span s in [from, to) against the new copy. Equal runs
-// are duplicates; differing runs are conflicts resolved by the overlap policy.
-func (h *half) compare(out []span, s span, from, to, off int64, payload []byte, pkt int, last bool, p *placement) []span {
+// are duplicates; differing runs are conflicts resolved by the overlap policy,
+// except that a copy with a valid checksum beats a damaged one.
+func (h *half) compare(out []span, s span, from, to, off int64, payload []byte, pkt int, last, weak bool, p *placement) []span {
 	old := h.data[from:to]
 	cand := payload[from-off : to-off]
 	if bytes.Equal(old, cand) {
-		return appendSpan(out, span{from, to, s.owner, s.rivals})
+		return appendSpan(out, s.copyTo(from, to))
 	}
 	p.conflict = true
+	replace := last
+	if weak != s.weak {
+		replace = !weak
+	}
 	for k := 0; k < len(old); {
 		same := old[k] == cand[k]
 		n := k + 1
@@ -201,17 +214,22 @@ func (h *half) compare(out []span, s span, from, to, off int64, payload []byte, 
 		a, b := from+int64(k), from+int64(n)
 		switch {
 		case same:
-			out = appendSpan(out, span{a, b, s.owner, s.rivals})
-		case last:
+			out = appendSpan(out, s.copyTo(a, b))
+		case replace:
 			copy(old[k:n], cand[k:n])
 			p.won = true
-			out = appendSpan(out, span{a, b, pkt, withRival(s.rivals, s.owner)})
+			out = appendSpan(out, span{start: a, end: b, owner: pkt, rivals: withRival(s.rivals, s.owner), weak: weak})
 		default:
-			out = appendSpan(out, span{a, b, s.owner, withRival(s.rivals, pkt)})
+			out = appendSpan(out, span{start: a, end: b, owner: s.owner, rivals: withRival(s.rivals, pkt), weak: s.weak})
 		}
 		k = n
 	}
 	return out
+}
+
+// hasWeakBytes reports stream bytes that only a damaged copy delivered.
+func (h *half) hasWeakBytes() bool {
+	return slices.ContainsFunc(h.spans, func(s span) bool { return s.weak })
 }
 
 // appendSpan appends s, merging it into the previous span when they touch and

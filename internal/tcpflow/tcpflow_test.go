@@ -595,15 +595,22 @@ func TestStreamLimit(t *testing.T) {
 }
 
 func TestChecksumOffload(t *testing.T) {
-	s := one(t, Options{}, seq(handshake(), []pk{
-		C(PA, c1, s1, "abc").bad(),
-		Sv(A, s1, c1+3, "").bad(),
-	}, closing(3, 0)))
+	// The capture was taken on the client: every segment it sent fails the check.
+	pkts := seq(handshake(), []pk{
+		C(PA, c1, s1, "abc"),
+		Sv(A, s1, c1+3, ""),
+	}, closing(3, 0))
+	for i := range pkts {
+		if !pkts[i].fromServer {
+			pkts[i] = pkts[i].bad()
+		}
+	}
+	s := one(t, Options{}, pkts)
 	wantData(t, s, model.C2S, "abc")
 	wantNotes(t, s, 4, model.FlagChecksumWarning)
-	wantNotes(t, s, 5, model.FlagChecksumWarning)
+	wantNotes(t, s, 5)
 	d := diag(t, s, codeChecksumOffload)
-	if d.Level != model.LevelInfo || d.Count != 2 ||
+	if d.Level != model.LevelInfo || d.Count != 5 ||
 		d.Message != "Неверная контрольная сумма TCP — вероятно checksum offloading на узле захвата; данные используются" {
 		t.Errorf("diagnostic = %+v", d)
 	}

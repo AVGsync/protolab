@@ -18,6 +18,20 @@ const (
 	PolicyLast  = "last"
 )
 
+// Checksum policies (model.ProjectSettings.ChecksumPolicy).
+const (
+	// ChecksumWarn: bad TCP checksums are annotated and diagnosed. Failures
+	// of a sender whose segments mostly fail the check are taken for checksum
+	// offloading on the capturing host and change nothing else. A failing
+	// segment of a sender whose segments mostly pass is taken for damaged:
+	// its sequence and acknowledgment numbers do not extend the stream, and a
+	// copy with a valid checksum wins an overlap conflict against it
+	// regardless of the overlap policy.
+	ChecksumWarn = "warn"
+	// ChecksumIgnore: checksums are not looked at.
+	ChecksumIgnore = "ignore"
+)
+
 // Role certainty values (model.TcpSession.Roles).
 const (
 	RolesHandshake = "handshake" // client sent the SYN
@@ -30,6 +44,7 @@ const DefaultMaxStreamBytes = 64 << 20
 
 type Options struct {
 	OverlapPolicy  string // PolicyFirst (default) or PolicyLast
+	ChecksumPolicy string // ChecksumWarn (default) or ChecksumIgnore
 	TargetPorts    []int  // server ports of the device; used to infer roles without a handshake
 	MaxStreamBytes int    // 0 means DefaultMaxStreamBytes
 }

@@ -118,8 +118,9 @@ func (a *App) ListRuns(projectID string) ([]model.VerificationRun, error) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// Newest first; runs started in the same millisecond, latest created first.
 	out := make([]model.VerificationRun, 0, len(p.st.Runs))
-	for _, rec := range p.st.Runs {
+	for _, rec := range slices.Backward(p.st.Runs) {
 		out = append(out, p.runDTO(rec))
 	}
 	slices.SortStableFunc(out, func(x, y model.VerificationRun) int { return strings.Compare(y.StartedAt, x.StartedAt) })
@@ -331,20 +332,36 @@ func (a *App) executeRun(ctx context.Context, p *project, runID string, progress
 	})
 }
 
-// previousRun is the latest earlier successful run of the same interpretation on the same corpus.
+// previousRun is the latest earlier successful run of the same interpretation
+// on the same corpus. Runs are ordered by start time (millisecond precision)
+// and, between runs started in the same millisecond, by creation: runs are
+// appended to the project in the order they are created.
 func previousRun(runs []store.RunRecord, run model.VerificationRun) string {
-	best := ""
-	bestAt := ""
-	for _, r := range runs {
+	self := slices.IndexFunc(runs, func(r store.RunRecord) bool { return r.Run.ID == run.ID })
+	if self < 0 { // not stored yet: it is the latest created
+		runs = append(slices.Clip(runs), store.RunRecord{Run: run})
+		self = len(runs) - 1
+	}
+	before := func(i, j int) bool { // run i started before run j
+		if a, b := runs[i].Run.StartedAt, runs[j].Run.StartedAt; a != b {
+			return a < b
+		}
+		return i < j
+	}
+	best := -1
+	for i, r := range runs {
 		x := r.Run
-		if x.ID == run.ID || x.Status != "succeeded" || x.InterpretationID != run.InterpretationID || x.CorpusID != run.CorpusID {
+		if i == self || x.Status != "succeeded" || x.InterpretationID != run.InterpretationID || x.CorpusID != run.CorpusID {
 			continue
 		}
-		if x.StartedAt < run.StartedAt && x.StartedAt > bestAt {
-			best, bestAt = x.ID, x.StartedAt
+		if before(i, self) && (best < 0 || before(best, i)) {
+			best = i
 		}
 	}
-	return best
+	if best < 0 {
+		return ""
+	}
+	return runs[best].Run.ID
 }
 
 func (a *App) failRun(p *project, runID, msg string) error {

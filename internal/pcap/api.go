@@ -35,6 +35,20 @@ var (
 	ErrTruncatedFile = errors.New("pcap: file is truncated")
 )
 
+// PacketError reports a packet record that cannot be used although the file
+// structure around it is intact (a pcapng packet block naming an undeclared
+// interface, or announcing more bytes than it holds). The record is consumed:
+// Next can be called again to continue with the following one. It wraps
+// ErrCorrupt.
+type PacketError struct {
+	Number int // the record's packet number: it counts like any other packet
+	Err    error
+}
+
+func (e *PacketError) Error() string { return e.Err.Error() }
+
+func (e *PacketError) Unwrap() error { return e.Err }
+
 // Interface describes a capture interface (one per classic pcap file, one per IDB in pcapng).
 type Interface struct {
 	LinkType uint16
@@ -98,7 +112,9 @@ func (r *Reader) Format() Format { return r.impl.format() }
 // Interfaces seen so far (pcapng may declare interfaces between packets).
 func (r *Reader) Interfaces() []Interface { return r.impl.interfaces() }
 
-// Next returns the next packet, io.EOF at a clean end, ErrTruncatedFile on a partial trailing record.
+// Next returns the next packet, io.EOF at a clean end, ErrTruncatedFile on a
+// partial trailing record, a *PacketError for an unusable record that can be
+// skipped. Any other error ends the file.
 func (r *Reader) Next() (Packet, error) { return r.impl.next() }
 
 // NgWriter writes a single-section, single-interface pcapng file (microsecond timestamps).

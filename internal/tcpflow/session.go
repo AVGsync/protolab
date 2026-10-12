@@ -36,15 +36,41 @@ type builder struct {
 	source roleSource
 	halves [2]*half // [0] client->server, [1] server->client
 	offset []int64  // stream offset of each input's first payload byte
+	// verified and failed count the segments of each direction with a valid
+	// and with a wrong checksum.
+	verified, failed [2]int
 }
 
 func buildSession(c *conn, opt *options) *Session {
 	b := &builder{c: c, opt: opt, halves: [2]*half{newHalf(model.C2S), newHalf(model.S2C)}}
 	b.assignRoles()
+	b.countChecksums()
 	b.findBases()
 	b.measure()
-	packets, badChecksums := b.place()
-	return b.session(packets, badChecksums)
+	packets, checks := b.place()
+	return b.session(packets, checks)
+}
+
+func (b *builder) countChecksums() {
+	for i := range b.c.inputs {
+		s := &b.c.inputs[i].Seg
+		switch s.Checksum {
+		case netpkt.ChecksumOK:
+			b.verified[b.dir(s)]++
+		case netpkt.ChecksumBad:
+			b.failed[b.dir(s)]++
+		}
+	}
+}
+
+// suspect reports a segment that failed the checksum while most segments of
+// its sender passed it: it was damaged rather than sent through checksum
+// offloading (which spoils nearly every segment of the capturing host; the
+// kernel still computes a few itself, such as resets), so its header fields
+// are not trusted.
+func (b *builder) suspect(s *netpkt.Segment) bool {
+	d := b.dir(s)
+	return s.Checksum == netpkt.ChecksumBad && b.verified[d] > b.failed[d]
 }
 
 func (b *builder) server() netip.AddrPort {
@@ -163,6 +189,9 @@ func (b *builder) estimateBases() {
 	var est [2]estimate
 	for i := range b.c.inputs {
 		s := &b.c.inputs[i].Seg
+		if b.suspect(s) {
+			continue
+		}
 		d := b.dir(s)
 		if s.Flags.Has(netpkt.ACK) && !b.halves[1-d].known {
 			p := &est[1-d]
@@ -220,6 +249,12 @@ func (b *builder) measure() {
 		d := b.dir(s)
 		h := b.halves[d]
 		carries := s.PayloadLen > 0 || s.Flags.Has(netpkt.FIN)
+		if b.suspect(s) {
+			// A damaged header must not stretch the stream: the segment's bytes
+			// are placed only within the extent the intact segments establish.
+			b.offset[i] = h.seq.at(dataSeq(s))
+			continue
+		}
 		if carries && !s.Flags.Has(netpkt.RST) {
 			off := h.seq.advance(dataSeq(s))
 			b.offset[i] = off
@@ -241,10 +276,19 @@ func (b *builder) measure() {
 	}
 }
 
+// checksumStats are the packets that failed the TCP checksum.
+type checksumStats struct {
+	offloaded  int   // from senders all of whose segments fail: checksum offloading
+	damaged    int   // from senders whose other segments pass
+	damagedRef []int // the first maxPacketRefs of them
+	// unverified: a damaged segment's bytes are in a stream, no intact copy replaced them.
+	unverified bool
+}
+
 // place reassembles both streams in capture order and annotates the packets.
-func (b *builder) place() ([]Packet, int) {
+func (b *builder) place() ([]Packet, checksumStats) {
 	packets := make([]Packet, len(b.c.inputs))
-	badChecksums := 0
+	var checks checksumStats
 	for i := range b.c.inputs {
 		in := &b.c.inputs[i]
 		s := &in.Seg
@@ -263,13 +307,21 @@ func (b *builder) place() ([]Packet, int) {
 		if s.Flags.Has(netpkt.ACK) {
 			p.Ack = s.Ack - peer.ref()
 		}
-		contributed, notes := h.accept(in, b.offset[i], b.opt.last)
+		weak := b.suspect(s)
+		contributed, notes := h.accept(in, b.offset[i], b.opt.last, weak)
 		if s.Truncated() {
 			notes = append(notes, model.FlagTruncated)
 		}
 		if s.Checksum == netpkt.ChecksumBad {
 			notes = append(notes, model.FlagChecksumWarning)
-			badChecksums++
+			if weak {
+				checks.damaged++
+				if len(checks.damagedRef) < maxPacketRefs {
+					checks.damagedRef = append(checks.damagedRef, in.Number)
+				}
+			} else {
+				checks.offloaded++
+			}
 		}
 		p.Annotations = notes
 		if contributed {
@@ -286,13 +338,16 @@ func (b *builder) place() ([]Packet, int) {
 		}
 		packets[i] = p
 	}
-	return packets, badChecksums
+	for _, h := range b.halves {
+		checks.unverified = checks.unverified || h.hasWeakBytes()
+	}
+	return packets, checks
 }
 
 // accept merges one segment into the stream. It reports whether the segment
 // contributed to the stream (new bytes, a new truncated range, or a won
 // conflict) and returns its annotations.
-func (h *half) accept(in *Input, off int64, last bool) (bool, []string) {
+func (h *half) accept(in *Input, off int64, last, weak bool) (bool, []string) {
 	s := &in.Seg
 	notes := []string{}
 	if s.Flags.Has(netpkt.RST) {
@@ -310,14 +365,16 @@ func (h *half) accept(in *Input, off int64, last bool) (bool, []string) {
 	outOfOrder := false
 	if s.PayloadLen > 0 {
 		received := h.capturedEnd()
-		pl = h.place(off, s.Payload, in.Number, last)
+		pl = h.place(off, s.Payload, in.Number, last, weak)
 		outOfOrder = pl.fresh > 0 && pl.firstFresh < received
 		if s.Truncated() {
 			newTail = h.addTail(off+int64(len(s.Payload)), end, in.Number)
 		}
 	}
 	retransmission := h.isRetransmission(s, end, pl.fresh > 0 || newTail > 0)
-	h.advance(s, end)
+	if !weak || end <= h.length {
+		h.advance(s, end)
+	}
 
 	if retransmission {
 		notes = append(notes, model.FlagRetransmission)

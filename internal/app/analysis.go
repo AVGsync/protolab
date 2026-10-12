@@ -44,8 +44,8 @@ func filledSlot(res *captureAnalysis) *analysisSlot {
 // get runs compute in the first caller and makes the others wait for its result.
 func (s *analysisSlot) get(compute func() (*captureAnalysis, error)) (*captureAnalysis, error) {
 	if s.started.CompareAndSwap(false, true) {
+		defer close(s.done) // even if compute panics: the waiters must not hang
 		s.res, s.err = compute()
-		close(s.done)
 	} else {
 		<-s.done
 	}
@@ -166,7 +166,17 @@ type decodeStat struct {
 
 // analyzeFile reads a capture, reassembles TCP and builds all DTOs.
 // The file's SHA-256 is computed on the fly and compared with the recorded one.
-func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (*captureAnalysis, error) {
+// An internal failure becomes an error of this capture only.
+func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (res *captureAnalysis, err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			res, err = nil, fmt.Errorf("внутренняя ошибка анализа: %v", v)
+		}
+	}()
+	return analyze(ctx, in, progress)
+}
+
+func analyze(ctx context.Context, in analyzeInput, progress jobs.Progress) (*captureAnalysis, error) {
 	if progress == nil {
 		progress = func(float64, string) {}
 	}
@@ -204,11 +214,13 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 	res := &captureAnalysis{captureID: in.capture.ID, format: string(r.Format()), seq: analysisSeq.Add(1), diagnostics: []model.Diagnostic{}}
 	asm := tcpflow.NewAssembler(tcpflow.Options{
 		OverlapPolicy:  in.settings.OverlapPolicy,
+		ChecksumPolicy: in.settings.ChecksumPolicy,
 		TargetPorts:    in.settings.TargetPorts,
 		MaxStreamBytes: in.limits.MaxStreamBytes,
 	})
 	decodeErrs := map[string]*decodeStat{}
 	var readDiag []model.Diagnostic
+	var damaged decodeStat // packet records the reader skipped
 
 	for {
 		if res.packetCount%1024 == 0 && ctx.Err() != nil {
@@ -217,6 +229,19 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 		pkt, err := r.Next()
 		if errors.Is(err, io.EOF) {
 			break
+		}
+		if pe := (*pcap.PacketError)(nil); errors.As(err, &pe) {
+			// The record is unusable, the file goes on: number it and continue.
+			if pe.Number > in.limits.MaxPackets {
+				readDiag = append(readDiag, packetLimitDiagnostic(in.limits.MaxPackets))
+				break
+			}
+			res.packetCount = pe.Number
+			damaged.count++
+			if len(damaged.packets) < 10 {
+				damaged.packets = append(damaged.packets, pe.Number)
+			}
+			continue
 		}
 		if errors.Is(err, pcap.ErrTruncatedFile) {
 			readDiag = append(readDiag, model.Diagnostic{
@@ -235,11 +260,7 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 			break
 		}
 		if pkt.Number > in.limits.MaxPackets {
-			readDiag = append(readDiag, model.Diagnostic{
-				Level:   model.LevelError,
-				Code:    "packet_limit",
-				Message: fmt.Sprintf("Превышен предел %d пакетов: анализ остановлен, остальные пакеты не обработаны", in.limits.MaxPackets),
-			})
+			readDiag = append(readDiag, packetLimitDiagnostic(in.limits.MaxPackets))
 			break
 		}
 		res.packetCount = pkt.Number
@@ -316,6 +337,15 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 	}
 
 	res.diagnostics = append(res.diagnostics, readDiag...)
+	if damaged.count > 0 {
+		res.diagnostics = append(res.diagnostics, model.Diagnostic{
+			Level:         model.LevelError,
+			Code:          "damaged_record",
+			Message:       "Повреждённые записи пакетов (неизвестный интерфейс или длина больше блока) пропущены, чтение продолжено",
+			Count:         damaged.count,
+			PacketNumbers: damaged.packets,
+		})
+	}
 	res.diagnostics = append(res.diagnostics, decodeDiagnostics(decodeErrs, ifaces)...)
 	res.diagnostics = append(res.diagnostics, sessionDiag...)
 	res.diagnostics = append(res.diagnostics, aggregateSessionDiagnostics(res.sessions)...)
@@ -327,6 +357,14 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 		}}, res.diagnostics...)
 	}
 	return res, nil
+}
+
+func packetLimitDiagnostic(limit int) model.Diagnostic {
+	return model.Diagnostic{
+		Level:   model.LevelError,
+		Code:    "packet_limit",
+		Message: fmt.Sprintf("Превышен предел %d пакетов: анализ остановлен, остальные пакеты не обработаны", limit),
+	}
 }
 
 var decodeMessages = map[string]struct{ level, text string }{
@@ -367,6 +405,7 @@ var captureLevelMessage = map[string]string{
 	"overlap_conflict":  "Повторные передачи с различающимися данными (выбор по политике проекта)",
 	"missing_handshake": "Соединения без начала: роли сторон не установлены по рукопожатию",
 	"checksum_offload":  "Неверные контрольные суммы TCP (вероятно checksum offloading)",
+	"checksum_error":    "Неверные контрольные суммы TCP у отдельных пакетов (вероятно повреждение)",
 	"stream_too_large":  "Потоки превышают предел размера: часть байтов не сохранена",
 }
 
@@ -407,20 +446,11 @@ func endpoint(ap netip.AddrPort) model.Endpoint {
 	return model.Endpoint{IP: ap.Addr().String(), Port: int(ap.Port())}
 }
 
-// buildSession converts a reassembled flow into API objects.
+// buildSession converts a reassembled flow into API objects. The checksum
+// policy was applied by the assembler.
 func buildSession(in analyzeInput, fl *tcpflow.Session) *sessionData {
-	ignoreChecksum := in.settings.ChecksumPolicy == "ignore"
 	id := sessionID(in.capture.ID, fl.Index)
-	cleanFlags := func(flags []string) []string {
-		out := make([]string, 0, len(flags))
-		for _, f := range flags {
-			if ignoreChecksum && f == model.FlagChecksumWarning {
-				continue
-			}
-			out = append(out, f)
-		}
-		return out
-	}
+	cleanFlags := func(flags []string) []string { return append(make([]string, 0, len(flags)), flags...) }
 
 	sd := &sessionData{flow: fl}
 	flags := model.SessionFlags{Handshake: fl.Handshake, Closed: fl.Closed}
@@ -494,9 +524,6 @@ func buildSession(in analyzeInput, fl *tcpflow.Session) *sessionData {
 
 	diags := make([]model.Diagnostic, 0, len(fl.Diagnostics))
 	for _, d := range fl.Diagnostics {
-		if ignoreChecksum && d.Code == "checksum_offload" {
-			continue
-		}
 		d.SessionID = id
 		diags = append(diags, d)
 	}
