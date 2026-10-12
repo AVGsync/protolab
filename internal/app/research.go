@@ -195,6 +195,9 @@ func inGaps(gaps []model.StreamGap, off int) bool {
 	return false
 }
 
+// maxObservationBytes bounds the byte snapshot stored with an observation.
+const maxObservationBytes = 64 << 10
+
 func (a *App) CreateObservation(projectID string, in model.CreateObservationInput) (model.Observation, error) {
 	p, err := a.project(projectID)
 	if err != nil {
@@ -207,6 +210,9 @@ func (a *App) addObservation(p *project, in model.CreateObservationInput, create
 	note := strings.TrimSpace(in.Note)
 	if note == "" {
 		return model.Observation{}, invalid("Опишите наблюдение")
+	}
+	if in.Source.Length > maxObservationBytes {
+		return model.Observation{}, invalid("Наблюдение охватывает не больше %d байт: снимок байтов хранится в проекте", maxObservationBytes)
 	}
 	sd, err := p.session(in.Source.SessionID)
 	if err != nil {
