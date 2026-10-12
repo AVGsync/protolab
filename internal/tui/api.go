@@ -3,6 +3,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/AVGsync/protolab/internal/model"
@@ -44,6 +45,10 @@ type Options struct {
 	// CreateDemo creates the demo project (hotkey "d"); nil hides the action.
 	CreateDemo func() error
 }
+
+// ErrNotTerminal is returned by Run when stdin or stdout is not a terminal;
+// the caller then falls back to plain logs.
+var ErrNotTerminal = errors.New("tui: stdin/stdout is not a terminal")
 
 // Run shows the TUI until the user quits or ctx is cancelled.
 func Run(ctx context.Context, opt Options) error { panic("not implemented") }

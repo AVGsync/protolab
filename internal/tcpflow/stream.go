@@ -253,7 +253,7 @@ func (h *half) addTail(from, to int64, pkt int) int64 {
 			break
 		}
 		added += h.truncated.add(from, s.start)
-		from = s.end
+		from = max(from, s.end)
 	}
 	return added + h.truncated.add(from, to)
 }

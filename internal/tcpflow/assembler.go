@@ -78,6 +78,7 @@ func (a *assembler) finish() []*Session {
 	for i, c := range conns {
 		sessions[i] = buildSession(c, a.opt)
 		sessions[i].Index = i
+		conns[i] = nil // sessions keep no reference to the inputs or payload copies
 	}
 	return sessions
 }
