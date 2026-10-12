@@ -82,7 +82,6 @@ export function ComparePage() {
     <Page className="max-w-none">
       <PageHeader
         title="Сравнение примеров"
-        description="Сообщения одного типа из разных действий, выровненные по смещению. Различающиеся байты сопоставляются с параметрами из журнала действий."
       />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <Field label="Интерпретация (кадрирование)" className="w-64">

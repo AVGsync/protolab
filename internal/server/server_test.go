@@ -159,6 +159,9 @@ func TestStaticSPA(t *testing.T) {
 	if rec := do(h, "GET", "/assets/missing.js", "", nil); rec.Code != 404 {
 		t.Fatalf("missing asset must 404, got %d", rec.Code)
 	}
+	if rec := do(h, "GET", "/assets/", "", nil); strings.Contains(rec.Body.String(), "app-1.js") {
+		t.Fatalf("directory listing of the embedded build: %s", rec.Body.String())
+	}
 	if rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("Content-Security-Policy") == "" {
 		t.Fatalf("security headers missing: %v", rec.Header())
 	}

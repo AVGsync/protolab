@@ -56,7 +56,6 @@ func checkStreamInvariants(t *testing.T, st *Stream) {
 	if n > 300 {
 		t.Fatalf("stream longer than the limit: %d", n)
 	}
-	known := make([]bool, n)
 	pos := 0
 	for _, g := range st.Gaps {
 		if g.Offset < pos || g.Length <= 0 || g.Offset+g.Length > n {
@@ -64,9 +63,6 @@ func checkStreamInvariants(t *testing.T, st *Stream) {
 		}
 		if g.Reason != model.GapLost && g.Reason != model.GapTruncated {
 			t.Fatalf("gap reason %q", g.Reason)
-		}
-		for k := g.Offset; k < g.Offset+g.Length; k++ {
-			known[k] = true
 		}
 		pos = g.Offset + g.Length
 	}

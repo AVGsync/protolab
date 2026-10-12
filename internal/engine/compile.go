@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/AVGsync/protolab/internal/spec"
@@ -69,6 +70,11 @@ type field struct {
 
 	decimals      int // rounding of scaled values
 	meaningStatus string
+
+	// enum is FieldRule.Enum keyed by value. Keys are matched against the
+	// decimal text of the raw value, so "01" or "1.0" never match anything.
+	enum    map[int64]string
+	hasEnum bool
 
 	// refs lists the earlier integer fields of the same level a count/length
 	// reference may resolve to, latest first. At run time the first one that
@@ -180,6 +186,15 @@ func compileFields(rules []spec.FieldRule) []field {
 		}
 		if fr.Scale != 0 {
 			f.decimals = scaleDecimals(fr.Scale)
+		}
+		if fr.Enum != nil {
+			f.hasEnum = true
+			f.enum = make(map[int64]string, len(fr.Enum))
+			for k, label := range fr.Enum {
+				if v, err := strconv.ParseInt(k, 10, 64); err == nil && strconv.FormatInt(v, 10) == k {
+					f.enum[v] = label
+				}
+			}
 		}
 		if ref := sizeRef(fr); ref != "" {
 			for j := i - 1; j >= 0; j-- {

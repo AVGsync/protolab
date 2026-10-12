@@ -37,7 +37,6 @@ export function SessionsPage() {
     <Page>
       <PageHeader
         title="TCP-сессии"
-        description="Каждое соединение — отдельная сессия, даже при повторном использовании адресов и портов. Неполные сессии не скрываются: ошибки одной сессии не блокируют остальные."
       />
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Select value={filters.captureId ?? ''} onChange={(e) => setParam('captureId', e.target.value || null)} className="w-72">

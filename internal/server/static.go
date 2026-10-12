@@ -34,12 +34,17 @@ func (s *server) static() http.Handler {
 			s.serveIndex(w, r)
 			return
 		}
-		if _, err := fs.Stat(s.opts.Static, name); err != nil {
+		info, err := fs.Stat(s.opts.Static, name)
+		if err != nil {
 			if strings.HasPrefix(name, "assets/") {
 				http.NotFound(w, r) // a missing hashed asset must not turn into HTML
 				return
 			}
 			s.serveIndex(w, r)
+			return
+		}
+		if info.IsDir() {
+			s.serveIndex(w, r) // no directory listings of the embedded build
 			return
 		}
 		if strings.HasPrefix(name, "assets/") {

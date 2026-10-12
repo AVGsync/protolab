@@ -28,6 +28,14 @@ type fieldParser struct {
 	// nesting level, pushed and popped like a stack.
 	values []int64
 	isSet  []bool
+
+	// lean skips display texts and takes field slices from arena, which is
+	// recycled for every message (see builder.lean).
+	lean  bool
+	arena []model.ParsedField
+	// keepValues stores integer values in ParsedField.Value. Only assertions
+	// read them back, so lean parsing without assertions avoids boxing them.
+	keepValues bool
 }
 
 func (p *fieldParser) reset(msg, unknown []byte) {
@@ -39,6 +47,8 @@ func (p *fieldParser) reset(msg, unknown []byte) {
 		clear(p.covered)
 	}
 	p.values, p.isSet = p.values[:0], p.isSet[:0]
+	p.arena = p.arena[:0]
+	p.keepValues = true
 }
 
 // parse decodes one level of fields. base is the offset of the enclosing
@@ -50,22 +60,36 @@ func (p *fieldParser) parse(fields []field, base int, prefix string) []model.Par
 		p.values = append(p.values, 0)
 		p.isSet = append(p.isSet, false)
 	}
-	out := make([]model.ParsedField, len(fields))
+	out := p.fieldSlice(len(fields))
 	for i := range fields {
-		out[i] = p.parseField(&fields[i], base, prefix, top, top+i)
+		p.parseField(&out[i], &fields[i], base, prefix, top, top+i)
 	}
 	p.values, p.isSet = p.values[:top], p.isSet[:top]
 	return out
 }
 
-func (p *fieldParser) parseField(f *field, base int, prefix string, top, slot int) model.ParsedField {
+func (p *fieldParser) fieldSlice(n int) []model.ParsedField {
+	if !p.lean {
+		return make([]model.ParsedField, n)
+	}
+	if len(p.arena)+n > cap(p.arena) {
+		// Slices handed out earlier keep the old array alive until the
+		// message is dropped; the next message starts on the larger one.
+		p.arena = make([]model.ParsedField, 0, max(2*cap(p.arena), n, 64))
+	}
+	start := len(p.arena)
+	p.arena = p.arena[:start+n]
+	return p.arena[start : start+n : start+n]
+}
+
+func (p *fieldParser) parseField(pf *model.ParsedField, f *field, base int, prefix string, top, slot int) {
 	src := f.src
 	offset := addSat(base, src.Offset)
 	if src.Offset < 0 {
 		offset = len(p.msg) + src.Offset
 	}
 	length := p.sizeOf(f, top)
-	pf := model.ParsedField{
+	*pf = model.ParsedField{
 		Path:          prefix + src.Name,
 		Name:          src.Name,
 		Offset:        offset,
@@ -79,13 +103,13 @@ func (p *fieldParser) parseField(f *field, base int, prefix string, top, slot in
 
 	if f.kind == kindInvalid {
 		pf.Length, pf.Display = 0, "—"
-		violate(&pf, fmt.Sprintf("Неизвестный тип %q", src.Type))
-		return pf
+		violate(pf, fmt.Sprintf("Неизвестный тип %q", src.Type))
+		return
 	}
 	if offset < 0 || length < 0 || offset > len(p.msg) || length > int64(len(p.msg)-offset) {
 		pf.Display = "—"
-		violate(&pf, issueOutOfBounds)
-		return pf
+		violate(pf, issueOutOfBounds)
+		return
 	}
 	end := offset + int(length)
 	for i := offset; i < end; i++ {
@@ -93,26 +117,29 @@ func (p *fieldParser) parseField(f *field, base int, prefix string, top, slot in
 	}
 	if p.unknown != nil && bytes.IndexByte(p.unknown[offset:end], 1) >= 0 {
 		pf.Status, pf.Display, pf.Issue = model.FieldUnknown, "??", issueUnknown
-		return pf
+		return
 	}
 
 	raw := p.msg[offset:end]
 	switch f.kind {
 	case kindArray:
-		p.parseArray(&pf, f, top)
+		p.parseArray(pf, f, top)
 	case kindBytes:
-		pf.Value = hexString(raw, false)
-		pf.Display = hexString(raw, true)
+		if !p.lean {
+			pf.Value = hexString(raw, false)
+			pf.Display = hexString(raw, true)
+		}
 	case kindASCII:
-		s := asciiString(raw)
-		pf.Value = s
-		pf.Display = strconv.Quote(s) // equals JSON.stringify for printable ASCII
+		if !p.lean {
+			s := asciiString(raw)
+			pf.Value = s
+			pf.Display = strconv.Quote(s) // equals JSON.stringify for printable ASCII
+		}
 	case kindInt:
 		v := readInt(raw, f)
 		p.values[slot], p.isSet[slot] = v, true
-		p.describeInt(&pf, f, v, offset)
+		p.describeInt(pf, f, v, offset)
 	}
-	return pf
 }
 
 func (p *fieldParser) sizeOf(f *field, top int) int64 {
@@ -147,8 +174,12 @@ func (p *fieldParser) ref(f *field, top int) int64 {
 func (p *fieldParser) parseArray(pf *model.ParsedField, f *field, top int) {
 	count := p.ref(f, top)
 	itemSize := f.src.ItemSize
-	pf.Value = count
-	pf.Display = fmt.Sprintf("%d × %d Б", count, itemSize)
+	if p.keepValues {
+		pf.Value = count
+	}
+	if !p.lean {
+		pf.Display = strconv.FormatInt(count, 10) + " × " + strconv.Itoa(itemSize) + " Б"
+	}
 	if itemSize <= 0 && count > 0 {
 		// Without a positive item size the items do not consume the message
 		// and their number is unbounded.
@@ -158,23 +189,23 @@ func (p *fieldParser) parseArray(pf *model.ParsedField, f *field, top int) {
 
 	// count*itemSize fits into the message here, so count is small.
 	n := int(max(count, 0))
-	pf.Children = make([]model.ParsedField, n)
+	pf.Children = p.fieldSlice(n)
 	for i := range n {
 		itemBase := pf.Offset + i*itemSize
-		path := pf.Path + "[" + strconv.Itoa(i) + "]"
-		item := model.ParsedField{
-			Path:   path,
-			Name:   "[" + strconv.Itoa(i) + "]",
+		name := "[" + strconv.Itoa(i) + "]"
+		item := &pf.Children[i]
+		*item = model.ParsedField{
+			Path:   pf.Path + name,
+			Name:   name,
 			Offset: itemBase,
 			Length: itemSize,
 			Type:   "struct",
 			Status: model.FieldOK,
 		}
-		item.Children = p.parse(f.items, itemBase, path+".")
+		item.Children = p.parse(f.items, itemBase, item.Path+".")
 		if hasViolation(item.Children) {
 			item.Status = model.FieldViolation
 		}
-		pf.Children[i] = item
 	}
 	if hasViolation(pf.Children) {
 		pf.Status = model.FieldViolation
@@ -183,27 +214,16 @@ func (p *fieldParser) parseArray(pf *model.ParsedField, f *field, top int) {
 
 func (p *fieldParser) describeInt(pf *model.ParsedField, f *field, v int64, offset int) {
 	src := f.src
-	pf.Value = v
-	raw := strconv.FormatInt(v, 10)
-
-	label, inEnum := src.Enum[raw]
-	switch {
-	case src.Enum != nil:
-		if !inEnum {
-			label = "?"
-		}
-		pf.Display = label + " (" + raw + ")"
-	case src.Scale != 0:
-		pf.Display = jsNumber(roundFixed(float64(v)*src.Scale, f.decimals))
-	default:
-		pf.Display = raw
+	if p.keepValues {
+		pf.Value = v
 	}
-	if src.Enum == nil && src.Unit != "" {
-		pf.Display += " " + src.Unit
+	label, inEnum := f.enum[v]
+	if !p.lean {
+		pf.Display = intDisplay(f, v, label, inEnum)
 	}
 
 	// Later checks overwrite the issue of earlier ones, as in the reference.
-	if src.Enum != nil && !inEnum {
+	if f.hasEnum && !inEnum {
 		violate(pf, fmt.Sprintf("Значение %d отсутствует в перечислении", v))
 	}
 	if issue := expectIssue(src.Expect, v); issue != "" {
@@ -212,6 +232,26 @@ func (p *fieldParser) describeInt(pf *model.ParsedField, f *field, v int64, offs
 	if issue := p.checksumIssue(src.Checksum, v, offset); issue != "" {
 		violate(pf, issue)
 	}
+}
+
+// intDisplay renders an integer the way the researcher reads it: an enum
+// label with the raw value, or the scaled value with its unit.
+func intDisplay(f *field, v int64, label string, inEnum bool) string {
+	raw := strconv.FormatInt(v, 10)
+	if f.hasEnum {
+		if !inEnum {
+			label = "?"
+		}
+		return label + " (" + raw + ")"
+	}
+	s := raw
+	if f.src.Scale != 0 {
+		s = formatScaled(float64(v)*f.src.Scale, f.decimals)
+	}
+	if f.src.Unit != "" {
+		s += " " + f.src.Unit
+	}
+	return s
 }
 
 // expectIssue checks the raw value; the first failing condition is reported.

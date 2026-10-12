@@ -55,6 +55,43 @@ func roundFixed(v float64, decimals int) float64 {
 	return math.Copysign(r, v)
 }
 
+// formatScaled returns jsNumber(roundFixed(v, decimals)) without the
+// round trip through float64 in the common case: when the toFixed digits have
+// at most 15 significant digits they convert to a double and back unchanged,
+// so trimming their trailing zeros already yields the shortest form.
+func formatScaled(v float64, decimals int) string {
+	a := math.Abs(v)
+	if math.IsNaN(v) || a >= 1e21 {
+		return jsNumber(roundFixed(v, decimals))
+	}
+	if isTie(a, decimals) {
+		a = math.Nextafter(a, math.Inf(1))
+	}
+	s := strconv.FormatFloat(a, 'f', decimals, 64)
+	if strings.IndexByte(s, '.') >= 0 {
+		s = strings.TrimSuffix(strings.TrimRight(s, "0"), ".")
+	}
+	if s == "0" {
+		return "0"
+	}
+	intPart, frac, _ := strings.Cut(s, ".")
+	digits := len(intPart) + len(frac)
+	if intPart == "0" {
+		significant := strings.TrimLeft(frac, "0")
+		if len(frac)-len(significant) >= 6 {
+			return jsNumber(roundFixed(v, decimals)) // below 1e-6: exponent notation
+		}
+		digits = len(significant)
+	}
+	if digits > 15 {
+		return jsNumber(roundFixed(v, decimals))
+	}
+	if v < 0 {
+		return "-" + s
+	}
+	return s
+}
+
 // isTie reports whether a*10^d lies exactly halfway between two integers, i.e.
 // whether a*2^(d+1)*5^d is an odd integer. Writing a = m*2^q with m odd, that
 // product is m*5^d*2^(q+d+1), which is an odd integer exactly when

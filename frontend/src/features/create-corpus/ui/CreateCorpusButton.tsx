@@ -74,7 +74,6 @@ export function CreateCorpusButton({ projectId }: { projectId: string }) {
         onClose={() => setOpen(false)}
         size="xl"
         title="Новый корпус"
-        description="Набор сессий для проверки интерпретации. Условия отбора сохраняются и показываются рядом со сводкой."
         footer={
           <>
             <span className="mr-auto self-center text-xs text-muted">Выбрано сессий: {selected.length}</span>

@@ -3,19 +3,16 @@ import { cn } from '../lib/cn';
 
 export interface PageHeaderProps {
   title: ReactNode;
-  /** One short line. Explanations belong in tooltips or the help overlay. */
-  description?: ReactNode;
   actions?: ReactNode;
   meta?: ReactNode;
   className?: string;
 }
 
-export function PageHeader({ title, description, actions, meta, className }: PageHeaderProps) {
+export function PageHeader({ title, actions, meta, className }: PageHeaderProps) {
   return (
     <div className={cn('flex flex-wrap items-start justify-between gap-4 pb-4', className)}>
       <div className="min-w-0">
         <h1 className="text-[15px] leading-6 font-semibold">{title}</h1>
-        {description && <p className="mt-0.5 max-w-3xl text-xs text-muted">{description}</p>}
         {meta && <div className="mt-1.5 flex flex-wrap items-center gap-3">{meta}</div>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

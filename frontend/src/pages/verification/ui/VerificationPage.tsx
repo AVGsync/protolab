@@ -21,7 +21,6 @@ export function VerificationPage() {
     <Page>
       <PageHeader
         title="Проверка интерпретаций"
-        description="Интерпретация применяется к корпусу целиком. Сводка показывает нарушения, неполные и неоднозначные данные, неизвестные участки и неприменимые правила — и условия отбора корпуса."
         actions={
           <>
             <CreateCorpusButton projectId={projectId} />

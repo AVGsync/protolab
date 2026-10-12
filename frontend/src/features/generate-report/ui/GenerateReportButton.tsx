@@ -50,7 +50,6 @@ export function GenerateReportButton({ projectId }: { projectId: string }) {
         open={open}
         onClose={() => setOpen(false)}
         title="Отчёт об исследовании"
-        description="Читаемый отчёт, машиночитаемая интерпретация, примеры входных данных с ожидаемыми результатами и команда повторного применения."
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>

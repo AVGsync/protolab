@@ -65,7 +65,6 @@ export function StartRunButton({
         open={open}
         onClose={() => setOpen(false)}
         title="Проверка интерпретации"
-        description="Интерпретация применяется ко всем сессиям корпуса. В сводку попадают нарушения, неполные и неоднозначные данные, неизвестные участки и неприменимые правила."
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>

@@ -12,13 +12,12 @@ import (
 func parseSession(s *spec.Spec, in SessionInput) ParsedSession {
 	c := compile(s)
 	sess := c.newSession(&in, true)
-	b := c.newBuilder(&in)
+	b := c.newBuilder(&in, false)
 	out := ParsedSession{Messages: make([]model.Message, len(sess.order)), Unframed: sess.unframed}
 	for i, ref := range sess.order {
 		st, f := sess.frame(ref)
-		m := b.message(st, f)
-		m.Index = i
-		out.Messages[i] = m
+		out.Messages[i] = b.message(st, f)
+		out.Messages[i].Index = i
 	}
 	return out
 }
@@ -64,55 +63,57 @@ func (s *session) frame(ref frameRef) (*stream, *frame) {
 // by s2c). Timestamps are fixed-width UTC strings, so they compare as text.
 // Each direction is usually already in order, which allows a linear merge.
 func timeOrder(streams [2]*stream) []frameRef {
-	a, b := streams[0].frames, streams[1].frames
-	out := make([]frameRef, 0, len(a)+len(b))
-	before := func(x, y *frame) bool {
-		if x.ts != y.ts {
-			return x.ts < y.ts
+	a, b := streams[0], streams[1]
+	out := make([]frameRef, 0, len(a.frames)+len(b.frames))
+	before := func(x, y frameRef) bool {
+		sx, sy := streams[x.dir], streams[y.dir]
+		fx, fy := &sx.frames[x.idx], &sy.frames[y.idx]
+		if x.dir != y.dir || fx.seg != fy.seg {
+			if tx, ty := sx.timestampOf(fx), sy.timestampOf(fy); tx != ty {
+				return tx < ty
+			}
 		}
-		return x.offset < y.offset
+		return fx.offset < fy.offset
 	}
 
-	if framesSorted(a) && framesSorted(b) {
+	if a.framesInTimeOrder() && b.framesInTimeOrder() {
 		i, j := 0, 0
-		for i < len(a) && j < len(b) {
-			if before(&b[j], &a[i]) {
-				out = append(out, frameRef{dir: 1, idx: int32(j)})
+		for i < len(a.frames) && j < len(b.frames) {
+			ra, rb := frameRef{dir: 0, idx: int32(i)}, frameRef{dir: 1, idx: int32(j)}
+			if before(rb, ra) {
+				out = append(out, rb)
 				j++
 			} else {
-				out = append(out, frameRef{dir: 0, idx: int32(i)})
+				out = append(out, ra)
 				i++
 			}
 		}
-		for ; i < len(a); i++ {
+		for ; i < len(a.frames); i++ {
 			out = append(out, frameRef{dir: 0, idx: int32(i)})
 		}
-		for ; j < len(b); j++ {
+		for ; j < len(b.frames); j++ {
 			out = append(out, frameRef{dir: 1, idx: int32(j)})
 		}
 		return out
 	}
 
-	for i := range a {
+	for i := range a.frames {
 		out = append(out, frameRef{dir: 0, idx: int32(i)})
 	}
-	for j := range b {
+	for j := range b.frames {
 		out = append(out, frameRef{dir: 1, idx: int32(j)})
 	}
-	sort.SliceStable(out, func(x, y int) bool {
-		fx := &streams[out[x].dir].frames[out[x].idx]
-		fy := &streams[out[y].dir].frames[out[y].idx]
-		return before(fx, fy)
-	})
+	sort.SliceStable(out, func(x, y int) bool { return before(out[x], out[y]) })
 	return out
 }
 
-// framesSorted reports whether frames of one stream are in time order.
-// Offsets grow along a stream, so only timestamps need checking; segments
-// captured out of order can break it.
-func framesSorted(fs []frame) bool {
-	for i := 1; i < len(fs); i++ {
-		if fs[i].ts < fs[i-1].ts {
+// framesInTimeOrder reports whether the frames of a stream are already sorted
+// by time. Offsets grow along a stream, so only timestamps need checking;
+// segments captured out of order can break it.
+func (st *stream) framesInTimeOrder() bool {
+	for i := 1; i < len(st.frames); i++ {
+		prev, cur := &st.frames[i-1], &st.frames[i]
+		if prev.seg != cur.seg && st.timestampOf(cur) < st.timestampOf(prev) {
 			return false
 		}
 	}
@@ -126,10 +127,22 @@ type builder struct {
 	bound     [][]boundAssertion
 	parser    fieldParser
 	matched   []int
+
+	// lean is set when messages are only tallied and then dropped: display
+	// texts and packet lists are skipped and buffers are reused across
+	// messages, so a message is valid only until the next one is built.
+	lean       bool
+	unknownBuf []model.ByteRange
 }
 
-func (c *compiled) newBuilder(in *SessionInput) *builder {
-	return &builder{c: c, sessionID: in.Session.ID, bound: c.bindAssertions(in.Actions)}
+func (c *compiled) newBuilder(in *SessionInput, lean bool) *builder {
+	return &builder{
+		c:         c,
+		sessionID: in.Session.ID,
+		bound:     c.bindAssertions(in.Actions),
+		parser:    fieldParser{lean: lean},
+		lean:      lean,
+	}
 }
 
 func (b *builder) message(st *stream, f *frame) model.Message {
@@ -138,31 +151,42 @@ func (b *builder) message(st *stream, f *frame) model.Message {
 	unknown := st.unknownSlice(f.offset, end)
 
 	m := model.Message{
-		SessionID:     b.sessionID,
-		Direction:     st.dir,
-		Offset:        f.offset,
-		Length:        f.length,
-		Timestamp:     f.ts,
-		PacketNumbers: st.segs.packets(f.offset, f.length),
-		Issues:        make([]string, len(f.issues), len(f.issues)+1),
-		Fields:        []model.ParsedField{},
-		Data:          data,
+		SessionID: b.sessionID,
+		Direction: st.dir,
+		Offset:    f.offset,
+		Length:    f.length,
+		Timestamp: st.timestampOf(f),
+		Issues:    []string{},
+		Fields:    []model.ParsedField{},
+		Data:      data,
 	}
-	copy(m.Issues, f.issues)
+	if issues := st.issuesOf(f); len(issues) > 0 {
+		m.Issues = append(make([]string, 0, len(issues)+1), issues...)
+	}
+	if !b.lean {
+		m.PacketNumbers = st.segs.packets(f.offset, f.length)
+	}
 
 	b.parser.reset(data, unknown)
 	b.matched = b.c.matchRules(b.matched[:0], data, unknown, st.dir)
 	var r *rule
 	if len(b.matched) > 0 {
 		r = &b.c.rules[b.matched[0]]
-		id := r.id
-		m.RuleID, m.RuleTitle = &id, r.title
-		m.Fields = b.parser.parse(r.fields, 0, "")
+		var bound []boundAssertion
 		if b.bound != nil {
-			applyAssertions(&m, r, b.bound[b.matched[0]])
+			bound = b.bound[b.matched[0]]
 		}
+		m.RuleID, m.RuleTitle = b.ruleID(r), r.title
+		b.parser.keepValues = !b.lean || len(bound) > 0
+		m.Fields = b.parser.parse(r.fields, 0, "")
+		applyAssertions(&m, r, bound)
 	}
-	m.Unknown = uncovered(b.parser.covered)
+	if b.lean {
+		b.unknownBuf = appendUncovered(b.unknownBuf[:0], b.parser.covered)
+		m.Unknown = b.unknownBuf
+	} else {
+		m.Unknown = appendUncovered([]model.ByteRange{}, b.parser.covered)
+	}
 
 	if len(b.matched) > 1 {
 		m.CandidateRuleIDs = make([]string, len(b.matched))
@@ -185,6 +209,16 @@ func (b *builder) message(st *stream, f *frame) model.Message {
 		m.Status = model.MsgOK
 	}
 	return m
+}
+
+// ruleID returns a pointer for Message.RuleID. Messages handed to callers get
+// their own copy so that they never alias each other or the compiled spec.
+func (b *builder) ruleID(r *rule) *string {
+	if b.lean {
+		return &r.id
+	}
+	id := r.id
+	return &id
 }
 
 // matchRules appends the indices of all rules matching a message. Gap bytes
@@ -217,9 +251,8 @@ func (r *rule) matches(msg, unknown []byte, dir model.Direction) bool {
 	return true
 }
 
-// uncovered returns the ranges of zero bytes in covered.
-func uncovered(covered []byte) []model.ByteRange {
-	out := []model.ByteRange{}
+// appendUncovered appends the ranges of zero bytes in covered to out.
+func appendUncovered(out []model.ByteRange, covered []byte) []model.ByteRange {
 	for pos := 0; pos < len(covered); {
 		start := bytes.IndexByte(covered[pos:], 0)
 		if start < 0 {

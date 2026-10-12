@@ -48,7 +48,7 @@ export function SaveVersionButton({ projectId, interpretationId, spec, disabled,
         open={open}
         onClose={() => setOpen(false)}
         title="Новая версия интерпретации"
-        description="Версия неизменяема и получает собственный хеш. Результаты проверок прошлых версий не выдаются за актуальные."
+        description="Версия неизменяема и получает собственный хеш."
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
