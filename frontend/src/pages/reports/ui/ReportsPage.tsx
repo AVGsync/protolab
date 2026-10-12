@@ -8,10 +8,10 @@ import { formatBytes, formatDateTime, shortHash, useRequiredParams } from '@/sha
 import {
   CopyButton,
   DownloadButton,
+  Disclosure,
   EmptyState,
   ErrorState,
   Loader,
-  Note,
   Page,
   PageHeader,
   Pane,
@@ -46,10 +46,6 @@ export function ReportsPage() {
         }
       />
 
-      <Note tone="info" className="mb-4">
-        Архив проекта содержит записи, интерпретации, наблюдения и проверки; пути относительные. При открытии SHA-256 записей
-        сверяются, устаревшие результаты помечаются.
-      </Note>
 
       {project.data && settings && (
         <div className="mb-4 flex items-center justify-between gap-4 border-y border-line py-2">
@@ -63,6 +59,13 @@ export function ReportsPage() {
           <ProjectSettingsButton project={project.data} />
         </div>
       )}
+
+      <Disclosure summary="Что входит в архив проекта" className="mb-4">
+        <p className="border-l border-line pl-4 text-xs text-muted">
+          Архив содержит записи, интерпретации, наблюдения и проверки; пути относительные. При открытии SHA-256 записей сверяются, устаревшие
+          результаты помечаются.
+        </p>
+      </Disclosure>
 
       {isLoading && <Loader />}
       {error && <ErrorState error={error} onRetry={refetch} />}

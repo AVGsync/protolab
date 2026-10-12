@@ -9,7 +9,10 @@ import { StartRunButton } from '@/features/run-verification';
 import { FindingsTable, RuleStatsTable, RunReadout } from '@/widgets/verification-report';
 import { routes } from '@/shared/config';
 import { countLabel, formatDateTime, formatDuration, shortHash, useRequiredParams } from '@/shared/lib';
-import { Disclosure, EmptyState, ErrorState, KeyValue, Loader, Mono, Note, Page, PageHeader, Pane, PaneHeader, Progress, Tabs } from '@/shared/ui';
+import { Disclosure, EmptyState, ErrorState, KeyValue, Loader, Mono, Note, Page, PageHeader, Pane, Progress, Tabs } from '@/shared/ui';
+
+/** One table at a time: findings of a kind, or the same run cut by rule. */
+type View = FindingKind | 'all' | 'rules';
 
 export function RunDetailsPage() {
   const { projectId, runId } = useRequiredParams('projectId', 'runId');
@@ -21,14 +24,14 @@ export function RunDetailsPage() {
   const previous = useQuery({ ...verificationQueries.run(run.data?.previousRunId ?? ''), enabled: !!run.data?.previousRunId });
   const corpora = useQuery(corpusQueries.list(projectId));
   const interp = useQuery({ ...interpretationQueries.detail(run.data?.interpretationId ?? ''), enabled: !!run.data });
-  const [kind, setKind] = useState<FindingKind | 'all'>('all');
+  const [view, setView] = useState<View>('all');
 
   if (run.isLoading) return <Loader />;
   if (run.error || !run.data) return <ErrorState error={run.error} onRetry={run.refetch} />;
   const r = run.data;
   const corpus = corpora.data?.items.find((c) => c.id === r.corpusId);
   const all = findings.data?.items ?? [];
-  const visible = kind === 'all' ? all : all.filter((f) => f.kind === kind);
+  const visible = view === 'all' || view === 'rules' ? all : all.filter((f) => f.kind === view);
   const countOf = (k: FindingKind) => all.filter((f) => f.kind === k).length;
 
   return (
@@ -80,6 +83,17 @@ export function RunDetailsPage() {
             <span className="font-mono">{formatDuration(r.durationMs)}</span>
           </>
         )}
+        {previous.data && (
+          <>
+            <span aria-hidden>·</span>
+            <span title="Числа в сводке показаны в сравнении с этой проверкой той же интерпретации на этом корпусе">
+              сравнение с{' '}
+              <Link to={routes.run(projectId, previous.data.id)} className="link">
+                {previous.data.id} (v{previous.data.version})
+              </Link>
+            </span>
+          </>
+        )}
       </p>
       <Disclosure summary="Условия воспроизведения" className="mt-1.5">
         <div className="grid gap-x-10 gap-y-1 border-l border-line pl-4 lg:grid-cols-2">
@@ -120,36 +134,29 @@ export function RunDetailsPage() {
       {r.summary && (
         <div className="mt-4">
           <RunReadout summary={r.summary} previous={previous.data?.summary} />
-          {previous.data && (
-            <p className="mt-2 text-2xs text-muted">
-              Сравнение с предыдущей проверкой той же интерпретации на этом корпусе:{' '}
-              <Link to={routes.run(projectId, previous.data.id)} className="link">
-                {previous.data.id} (v{previous.data.version})
-              </Link>
-            </p>
-          )}
-          <Note tone="info" className="mt-4">
+          <Note tone="info" className="mt-3">
             Совпадение на выбранных примерах не доказывает назначение полей и универсальность модели. Неприменимые правила
             {r.summary.inapplicableRules.length ? ` (${r.summary.inapplicableRules.join(', ')})` : ''} на этом корпусе не проверены.
           </Note>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <Pane className="min-w-0">
-              <Tabs<FindingKind | 'all'>
-                value={kind}
-                onChange={setKind}
-                items={[
-                  { id: 'all', label: 'Все', count: all.length },
-                  ...FINDING_KINDS.filter((k) => countOf(k) > 0).map((k) => ({ id: k, label: FINDING_KIND[k].label, count: countOf(k) })),
-                ]}
-              />
-              {findings.isLoading ? <Loader /> : <FindingsTable projectId={projectId} findings={visible} versionId={r.versionId} />}
-            </Pane>
-            <Pane className="self-start">
-              <PaneHeader title="По правилам" />
+          <Pane className="mt-4 min-w-0">
+            <Tabs<View>
+              value={view}
+              onChange={setView}
+              items={[
+                { id: 'all', label: 'Все находки', count: all.length },
+                ...FINDING_KINDS.filter((k) => countOf(k) > 0).map((k) => ({ id: k, label: FINDING_KIND[k].label, count: countOf(k) })),
+                { id: 'rules', label: 'По правилам', count: r.summary.byRule.length },
+              ]}
+            />
+            {view === 'rules' ? (
               <RuleStatsTable summary={r.summary} />
-            </Pane>
-          </div>
+            ) : findings.isLoading ? (
+              <Loader />
+            ) : (
+              <FindingsTable projectId={projectId} findings={visible} versionId={r.versionId} empty={view === 'all' ? 'Находок нет' : undefined} />
+            )}
+          </Pane>
         </div>
       )}
       {r.status === 'cancelled' && <EmptyState title="Проверка отменена" description="Результаты не сформированы." />}

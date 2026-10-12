@@ -40,7 +40,7 @@ export function JobsIndicator() {
         )}
       </button>
       {open && (
-        <div className="absolute top-8 right-0 z-40 w-96 rounded-ctl border border-line-strong bg-surface text-fg shadow-pop">
+        <div className="absolute top-8 right-0 z-40 w-[28rem] rounded-ctl border border-line-strong bg-surface text-fg shadow-pop">
           <div className="border-b border-line px-3 py-1.5 text-xs text-muted">Фоновые задачи</div>
           {jobs.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-muted">Задач нет</p>

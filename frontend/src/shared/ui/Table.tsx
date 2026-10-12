@@ -22,13 +22,25 @@ export interface TrProps extends HTMLAttributes<HTMLTableRowElement> {
   selected?: boolean;
 }
 
+/** A row with `onClick` is a control: focusable, and Enter or Space press it. */
 export function Tr({ className, selected, onClick, ...rest }: TrProps) {
   return (
     <tr
       onClick={onClick}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+                e.preventDefault();
+                e.currentTarget.click();
+              }
+            }
+          : undefined
+      }
       className={cn(
         'border-b border-line last:border-b-0',
-        onClick && 'cursor-pointer hover:bg-surface-2',
+        onClick && 'cursor-pointer hover:bg-surface-2 focus-visible:-outline-offset-2',
         selected && 'bg-selection hover:bg-selection',
         className,
       )}

@@ -12,7 +12,7 @@ import {
   type IntEncoding,
   type ValueHit,
 } from '@/shared/lib';
-import { Button, Input, Segmented, Select } from '@/shared/ui';
+import { Button, Disclosure, Input, Segmented, Select } from '@/shared/ui';
 
 export interface ValueSearchProps {
   bytes: Uint8Array;
@@ -57,8 +57,7 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
     onHits(result);
   };
 
-  const toggle = (enc: IntEncoding) =>
-    setEncodings((list) => (list.includes(enc) ? list.filter((e) => e !== enc) : [...list, enc]));
+  const toggle = (enc: IntEncoding) => setEncodings((list) => (list.includes(enc) ? list.filter((e) => e !== enc) : [...list, enc]));
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -96,22 +95,24 @@ export function ValueSearch({ bytes, unknownMask, onHits, onSelect }: ValueSearc
           </Button>
         </div>
         {mode === 'number' && (
-          <div className="flex flex-wrap gap-1" role="group" aria-label="Кодировки">
-            {INT_ENCODINGS.map((enc) => (
-              <button
-                key={enc}
-                type="button"
-                aria-pressed={encodings.includes(enc)}
-                onClick={() => toggle(enc)}
-                className={cn(
-                  'h-5 rounded-ctl border px-1.5 font-mono text-2xs',
-                  encodings.includes(enc) ? 'border-line-strong bg-surface-2 text-fg' : 'border-line text-muted hover:text-fg',
-                )}
-              >
-                {enc}
-              </button>
-            ))}
-          </div>
+          <Disclosure summary={`Кодировки, ${encodings.length} из ${INT_ENCODINGS.length}`}>
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Кодировки">
+              {INT_ENCODINGS.map((enc) => (
+                <button
+                  key={enc}
+                  type="button"
+                  aria-pressed={encodings.includes(enc)}
+                  onClick={() => toggle(enc)}
+                  className={cn(
+                    'h-5 rounded-ctl border px-1.5 font-mono text-2xs',
+                    encodings.includes(enc) ? 'border-line-strong bg-surface-2 text-fg' : 'border-line text-muted hover:text-fg',
+                  )}
+                >
+                  {enc}
+                </button>
+              ))}
+            </div>
+          </Disclosure>
         )}
         {error && <p className="text-xs text-danger">{error}</p>}
       </form>

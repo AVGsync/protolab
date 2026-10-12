@@ -1,5 +1,5 @@
 import { XIcon } from '@phosphor-icons/react';
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useId, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../lib/cn';
 
@@ -17,6 +17,7 @@ export interface ModalProps {
 const SIZES = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-5xl' };
 
 export function Modal({ open, onClose, title, description, children, footer, size = 'md' }: ModalProps) {
+  const titleId = useId();
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -34,11 +35,12 @@ export function Modal({ open, onClose, title, description, children, footer, siz
       <div
         role="dialog"
         aria-modal="true"
+        aria-labelledby={titleId}
         className={cn('w-full rounded-ctl border border-line-strong bg-surface shadow-pop', SIZES[size])}
       >
         <div className="flex items-start justify-between gap-4 border-b border-line px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold">{title}</h2>
+            <h2 id={titleId} className="text-sm font-semibold">{title}</h2>
             {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
           </div>
           <button

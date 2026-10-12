@@ -89,6 +89,8 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
     staleTime: Infinity,
   });
   const valid = validation.data?.valid ?? false;
+  // Known to be broken: not merely not validated yet, so a valid spec never flashes the empty state.
+  const invalid = !!draft.syntaxError || validation.data?.valid === false;
 
   const sessions = useQuery(sessionQueries.list(projectId, { target: true }));
   const [sessionOverride, setSessionOverride] = useState('');
@@ -250,7 +252,7 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
             </Select>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {!valid && <EmptyState title="Предпросмотра нет" description="Он появится, когда спецификация станет корректной." />}
+            {invalid && <EmptyState title="Предпросмотра нет" description="Он появится, когда спецификация станет корректной." />}
             {valid && preview.isFetching && !preview.data && <Loader />}
             {preview.error && <ErrorState error={preview.error} />}
             <MessageList messages={messages} activeIndex={activeIndex} onSelect={(m) => setActiveIndex(m.index)} />

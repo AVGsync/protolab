@@ -4,7 +4,7 @@ import { ACTION_KIND_LABEL, ActionParams, actionQueries } from '@/entities/actio
 import { ImportActionsButton } from '@/features/import-actions';
 import { routes } from '@/shared/config';
 import { formatDuration, formatTimestamp, useRequiredParams } from '@/shared/lib';
-import { EmptyState, ErrorState, Loader, Note, Page, PageHeader, Pane, Status, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
+import { Disclosure, EmptyState, ErrorState, Loader, Page, PageHeader, Pane, Status, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
 export function ActionsPage() {
   const { projectId } = useRequiredParams('projectId');
@@ -16,10 +16,12 @@ export function ActionsPage() {
         title="Журнал действий"
         actions={<ImportActionsButton projectId={projectId} />}
       />
-      <Note tone="info" className="mb-4">
-        Формат импорта, CSV: <code className="font-mono text-2xs">timestamp,kind,label,params,result</code>, где params —{' '}
-        <code className="font-mono text-2xs">param=setpoint;value=21</code> или JSON. Также принимается JSON-массив действий.
-      </Note>
+      <Disclosure summary="Формат импорта" className="mb-4">
+        <p className="border-l border-line pl-4 text-xs text-muted">
+          CSV: <code className="font-mono text-2xs text-fg">timestamp,kind,label,params,result</code>, где params —{' '}
+          <code className="font-mono text-2xs text-fg">param=setpoint;value=21</code> или JSON. Также принимается JSON-массив действий.
+        </p>
+      </Disclosure>
       {isLoading && <Loader />}
       {error && <ErrorState error={error} onRetry={refetch} />}
       {data && data.items.length === 0 && <EmptyState title="Журнал пуст" description="Импортируйте журнал действий из CSV или JSON." />}
@@ -39,9 +41,7 @@ export function ActionsPage() {
               {data.items.map((a) => (
                 <Tr key={a.id} className="align-top">
                   <Td className="font-mono text-xs whitespace-nowrap text-muted">
-                    {a.timestamp.slice(0, 10)}
-                    <br />
-                    {formatTimestamp(a.timestamp, 3)}
+                    {a.timestamp.slice(0, 10)} {formatTimestamp(a.timestamp, 3)}
                   </Td>
                   <Td>
                     <p className="font-medium">{a.label}</p>

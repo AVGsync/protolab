@@ -8,10 +8,12 @@ export interface FindingsTableProps {
   findings: Finding[];
   /** Version used for framing when jumping to the source. */
   versionId: string;
+  /** Title of the empty state. */
+  empty?: string;
 }
 
-export function FindingsTable({ projectId, findings, versionId }: FindingsTableProps) {
-  if (findings.length === 0) return <EmptyState title="Нет находок этого типа" />;
+export function FindingsTable({ projectId, findings, versionId, empty = 'Нет находок этого типа' }: FindingsTableProps) {
+  if (findings.length === 0) return <EmptyState title={empty} />;
   return (
     <Table>
       <THead>

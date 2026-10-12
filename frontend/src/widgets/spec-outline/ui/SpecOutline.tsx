@@ -1,9 +1,10 @@
 import { Link } from 'react-router';
-import { HypothesisStatusMark, type Hypothesis } from '@/entities/hypothesis';
+import { HYPOTHESIS_STATUS, type Hypothesis } from '@/entities/hypothesis';
 import type { FieldRule, InterpretationSpec } from '@/entities/interpretation';
 import { MeaningMark } from '@/entities/message';
 import { DirectionLabel } from '@/entities/session';
 import { routes } from '@/shared/config';
+import { cn } from '@/shared/lib';
 import { Arrow } from '@/shared/ui';
 
 export interface SpecOutlineProps {
@@ -85,13 +86,17 @@ function FieldLine({ field, projectId, byId, depth = 0 }: { field: FieldRule; pr
             {field.meaning ?? ''}
             {field.checksum && <span className="ml-1 font-mono text-2xs text-info">[{field.checksum}]</span>}
           </span>
-          {field.status && <MeaningMark status={field.status} />}
           {h && (
-            <Link to={routes.hypotheses(projectId, h.id)} title={`${h.id}: ${h.title}`} className="inline-flex items-center gap-1">
-              <span className="font-mono text-2xs text-muted">{h.id}</span>
-              <HypothesisStatusMark status={h.status} />
+            <Link
+              to={routes.hypotheses(projectId, h.id)}
+              title={`${h.id}: ${h.title} (${HYPOTHESIS_STATUS[h.status].label})`}
+              className={cn('font-mono text-2xs hover:underline', h.status === 'refuted' ? 'text-danger' : 'text-muted')}
+            >
+              {h.id}
             </Link>
           )}
+          {/* Structure alone is the normal state: only a claim about the meaning gets a mark. */}
+          {field.status && field.status !== 'structural' && <MeaningMark status={field.status} />}
         </span>
       </li>
       {field.items?.map((item) => <FieldLine key={item.name} field={item} projectId={projectId} byId={byId} depth={depth + 1} />)}
