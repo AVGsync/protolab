@@ -343,8 +343,12 @@ func Markdown(in Input) string {
 	}
 	for _, m := range sp.Messages {
 		walkFields(m.Fields, func(f spec.FieldRule) {
-			if f.Status == spec.MeaningStructural && f.Meaning != "" {
+			switch status := spec.EffectiveMeaningStatus(&f); {
+			case status == spec.MeaningStructural && f.Meaning != "":
 				w("- %s.%s: структура описана, назначение не подтверждено\n", m.ID, f.Name)
+				open++
+			case status == spec.MeaningHypothesis && f.Hypothesis == "":
+				w("- %s.%s: назначение «%s» предполагается, гипотеза с основаниями не указана\n", m.ID, f.Name, f.Meaning)
 				open++
 			}
 		})
@@ -397,10 +401,7 @@ func writeFields(b *strings.Builder, fields []spec.FieldRule, prefix string) {
 		if f.Checksum != "" {
 			meaning += " [" + f.Checksum + "]"
 		}
-		basis := meaningLabel[f.Status]
-		if basis == "" {
-			basis = meaningLabel[spec.MeaningStructural]
-		}
+		basis := meaningLabel[spec.EffectiveMeaningStatus(&f)]
 		if f.Hypothesis != "" {
 			basis += " (" + f.Hypothesis + ")"
 		}

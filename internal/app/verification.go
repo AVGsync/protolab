@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -375,6 +376,45 @@ func (a *App) failRun(p *project, runID, msg string) error {
 	})
 	return fmt.Errorf("проверка не выполнена: %s", msg)
 }
+
+// interruptedReason explains a run or report whose job is gone: the process
+// stopped (was killed) while it was running, or the project was exported then.
+const interruptedReason = "Прервано: сервер был остановлен во время выполнения"
+
+// failInterrupted marks runs and reports left "running"/"pending" by a process
+// that stopped without finishing them: no job will ever complete them, and the
+// UI must not show them as running forever. Captures resume instead (resumeIndexing).
+func (a *App) failInterrupted(p *project) {
+	changed := 0
+	err := p.update(func(st *store.State) error {
+		now := model.Now()
+		for i := range st.Runs {
+			if r := &st.Runs[i].Run; r.Status == "running" || r.Status == "queued" {
+				r.Status, r.Error, r.FinishedAt, r.JobID = "failed", interruptedReason, now, ""
+				changed++
+			}
+		}
+		for i := range st.Reports {
+			if r := &st.Reports[i]; r.Status == "pending" {
+				r.Status = "failed"
+				changed++
+			}
+		}
+		if changed == 0 {
+			return errUnchanged
+		}
+		return nil
+	})
+	switch {
+	case err == nil:
+		a.log.Warn("interrupted runs and reports marked failed", "project", p.id, "count", changed)
+	case !errors.Is(err, errUnchanged):
+		a.log.Error("mark interrupted runs", "project", p.id, "err", err)
+	}
+}
+
+// errUnchanged makes project.update skip saving when nothing changed.
+var errUnchanged = errors.New("unchanged")
 
 func (a *App) cancelRun(p *project, runID string) error {
 	_ = p.update(func(st *store.State) error {

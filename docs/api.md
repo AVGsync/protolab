@@ -84,7 +84,9 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 в `message` — номер строки). `kind` ∈ `read_params | set_param | get_measurement | read_log | other`
 (неизвестный — `other`). Сессии привязываются автоматически: из целевых сессий, начавшихся в окне
 от 0,5 с до действия до 5 с после него, выбирается ближайшая по времени
-(`links[].method = "auto_time"`, `deltaMs` — начало сессии минус время действия).
+(`links[].method = "auto_time"`, `deltaMs` — начало сессии минус время действия). Действия, для которых
+сессия не нашлась (журнал импортирован раньше записи), связываются так же, когда индексация новой записи
+завершается.
 
 ### Интерпретации
 
@@ -98,6 +100,9 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 | `GET /interpretation-versions/{versionId}` | — | `InterpretationVersion` |
 | `GET /interpretation-versions/{versionId}/export` | — | JSON-файл спецификации |
 | `POST /interpretations/validate` | `{spec}` | `ValidationResult` (всегда `200`) |
+
+Везде, где передаётся `spec`, принимается и скачанный файл версии (`/export`, артефакт отчёта): объект
+`$meta` в его корне отбрасывается, как это делает `protolab apply --spec`.
 | `POST /interpretations/preview` | `{spec, sessionId}` | `ListResponse<Message>` — применение несохранённого черновика |
 
 Формат спецификации — [`interpretation-format.md`](interpretation-format.md).
@@ -108,7 +113,7 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 |---|---|---|
 | `GET /projects/{projectId}/hypotheses` | — | `ListResponse<Hypothesis>` |
 | `POST /projects/{projectId}/hypotheses` | `CreateHypothesisInput` | `201 Hypothesis` (`status = "proposed"`) |
-| `PATCH /hypotheses/{id}` | `UpdateHypothesisInput` | `Hypothesis`; смена `status` без `note` → `422` |
+| `PATCH /hypotheses/{id}` | `UpdateHypothesisInput` | `Hypothesis`; смена `status` без `note` → `422`; неизвестное наблюдение в `observationIds` → `422`. Отклонённый запрос ничего не меняет. `observationIds` меняет связь с обеих сторон (`Observation.hypothesisIds`) |
 | `GET /projects/{projectId}/observations` | `hypothesisId?`, `sessionId?` | `ListResponse<Observation>` (новые сверху) |
 | `POST /projects/{projectId}/observations` | `CreateObservationInput` | `201 Observation`; `409 source_mismatch`, если `captureSha256` не совпал |
 | `DELETE /observations/{id}` | — | `204` |
@@ -131,9 +136,10 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 | `GET /projects/{projectId}/reports` | — | `ListResponse<Report>` |
 | `POST /projects/{projectId}/reports` | `{title, versionId, runIds}` | `202 {report, jobId}` |
 | `GET /reports/{reportId}/files/{fileName}` | — | файл артефакта (`ReportArtifact.url` указывает сюда) |
+| `GET /reports/{reportId}/bundle` | — | комплект для передачи (`report.<имя>.v<N>.zip`): артефакты отчёта и исходные записи, на которые ссылается файл примеров (`captures/<sha256>.pcap[ng]`); `protolab verify --examples examples.*.json` выполняется в распакованном каталоге без изменений. `409 not_ready`, пока отчёт формируется |
 | `GET /jobs` | `limit?` (по умолчанию 20) | `ListResponse<Job>` — последние задачи всех проектов |
 | `GET /jobs/{jobId}` | — | `Job` |
-| `POST /jobs/{jobId}/cancel` | — | `Job`; `409 not_cancellable`, если задача уже завершена |
+| `POST /jobs/{jobId}/cancel` | — | `Job` (`status = "cancelled"`); `409 not_cancellable`, если задача уже завершена или успела завершиться, пока запрос отмены шёл к ней (результат её работы сохранён) |
 | `GET /system/info` | — | `SystemInfo` (сборка, защитные пределы, `runtime.MemStats`, каталог данных) |
 
 ## Обязательная семантика
@@ -165,6 +171,9 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 7. **Сводка проверки** (`RunSummary`) учитывает весь корпус: нарушения, неполные, неоднозначные и
    нераспознанные сообщения, неописанные байты, неприменимые правила (`inapplicableRules`).
    `previousRunId` — предыдущая успешная проверка той же интерпретации на том же корпусе.
+   Проверка или отчёт, прерванные остановкой процесса (`running`/`pending` при следующем запуске или в
+   импортированном архиве), получают `status = "failed"` (у проверки — `error` с причиной), а не остаются
+   «выполняющимися».
 8. **Происхождение.** Каждый `Finding.examples[]` и `Observation.source` — это `SourceRef`
    (запись + sha256 + сессия + направление + диапазон + номера пакетов). `Observation.snapshotHex` —
    байты в момент создания (неизвестные — `??`). `integrity = "mismatch"`, если байты по ссылке изменились
@@ -174,7 +183,7 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 
 ## Перенос проекта
 
-`GET /projects/{id}/export` отдаёт zip-архив (`<имя>.protolab.zip`) — это каталог проекта как есть,
+`GET /projects/{id}/export` отдаёт zip-архив (`<projectId>.protolab.zip`) — это каталог проекта как есть,
 с относительными путями:
 
 ```text

@@ -1,6 +1,6 @@
 import { Link } from 'react-router';
 import { HYPOTHESIS_STATUS, type Hypothesis } from '@/entities/hypothesis';
-import type { FieldRule, InterpretationSpec } from '@/entities/interpretation';
+import { effectiveMeaningStatus, type FieldRule, type InterpretationSpec } from '@/entities/interpretation';
 import { MeaningMark } from '@/entities/message';
 import { DirectionLabel } from '@/entities/session';
 import { routes } from '@/shared/config';
@@ -96,7 +96,7 @@ function FieldLine({ field, projectId, byId, depth = 0 }: { field: FieldRule; pr
             </Link>
           )}
           {/* Structure alone is the normal state: only a claim about the meaning gets a mark. */}
-          {field.status && field.status !== 'structural' && <MeaningMark status={field.status} />}
+          {effectiveMeaningStatus(field) !== 'structural' && <MeaningMark status={effectiveMeaningStatus(field)} />}
         </span>
       </li>
       {field.items?.map((item) => <FieldLine key={item.name} field={item} projectId={projectId} byId={byId} depth={depth + 1} />)}

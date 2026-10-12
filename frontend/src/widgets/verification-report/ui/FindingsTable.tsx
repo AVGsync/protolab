@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react';
 import { SourceRefLink } from '@/entities/observation';
 import { FindingKindMark, type Finding } from '@/entities/verification';
+import type { SourceRef } from '@/shared/api';
 import { formatNumber } from '@/shared/lib';
 import { EmptyState, Table, TBody, Td, Th, THead, Tr } from '@/shared/ui';
 
@@ -10,9 +12,11 @@ export interface FindingsTableProps {
   versionId: string;
   /** Title of the empty state. */
   empty?: string;
+  /** An action next to an example, e.g. recording it as a counterexample. */
+  exampleAction?: (finding: Finding, example: SourceRef) => ReactNode;
 }
 
-export function FindingsTable({ projectId, findings, versionId, empty = 'Нет находок этого типа' }: FindingsTableProps) {
+export function FindingsTable({ projectId, findings, versionId, empty = 'Нет находок этого типа', exampleAction }: FindingsTableProps) {
   if (findings.length === 0) return <EmptyState title={empty} />;
   return (
     <Table>
@@ -40,7 +44,10 @@ export function FindingsTable({ projectId, findings, versionId, empty = 'Нет 
             <Td className="py-1.5">
               <div className="flex flex-col gap-0.5">
                 {f.examples.slice(0, 3).map((ex, i) => (
-                  <SourceRefLink key={i} projectId={projectId} source={ex} versionId={versionId} />
+                  <span key={i} className="flex items-center gap-2">
+                    <SourceRefLink projectId={projectId} source={ex} versionId={versionId} />
+                    {exampleAction?.(f, ex)}
+                  </span>
                 ))}
                 {f.examples.length > 3 && <span className="text-2xs text-muted">ещё {f.examples.length - 3}…</span>}
               </div>

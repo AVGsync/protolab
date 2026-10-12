@@ -118,3 +118,34 @@ func TestExtractRejectsBadArchives(t *testing.T) {
 		t.Errorf("failed imports left directories: %v", entries)
 	}
 }
+
+// Values of project.json that become paths are checked when it is loaded: an
+// imported archive must not point outside of its project directory.
+func TestLoadRejectsPathsOutsideTheProject(t *testing.T) {
+	sha := strings.Repeat("ab", 32)
+	good := `{"project":{"id":"prj-1"},"captures":[{"id":"cap-1","sha256":"` + sha + `","format":"pcapng","file":"captures/` + sha + `.pcapng"}],` +
+		`"reports":[{"id":"rep-1","artifacts":[{"fileName":"report.x.v1.md"}]}]}`
+	bad := map[string]string{
+		"project id":    strings.Replace(good, `"id":"prj-1"`, `"id":"../prj-1"`, 1),
+		"capture file":  strings.Replace(good, `"file":"captures/`+sha+`.pcapng"`, `"file":"../../../etc/passwd"`, 1),
+		"capture sha":   strings.ReplaceAll(good, sha, "../x"),
+		"report id":     strings.Replace(good, `"id":"rep-1"`, `"id":".."`, 1),
+		"artifact name": strings.Replace(good, `"fileName":"report.x.v1.md"`, `"fileName":"../../project.json"`, 1),
+	}
+	load := func(body string) error {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "project.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := LoadDir(dir)
+		return err
+	}
+	if err := load(good); err != nil {
+		t.Fatalf("valid project rejected: %v", err)
+	}
+	for name, body := range bad {
+		if err := load(body); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

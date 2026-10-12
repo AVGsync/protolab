@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { corpusQueries, describeCorpusFilter } from '@/entities/corpus';
-import { interpretationQueries } from '@/entities/interpretation';
+import { hypothesisBehind, interpretationQueries } from '@/entities/interpretation';
 import { FINDING_KIND, FINDING_KINDS, RunStatusMark, StaleTag, verificationQueries, type FindingKind } from '@/entities/verification';
+import { AddCounterexampleButton } from '@/features/manage-hypothesis';
 import { StartRunButton } from '@/features/run-verification';
 import { FindingsTable, RuleStatsTable, RunReadout } from '@/widgets/verification-report';
 import { routes } from '@/shared/config';
@@ -24,6 +25,7 @@ export function RunDetailsPage() {
   const previous = useQuery({ ...verificationQueries.run(run.data?.previousRunId ?? ''), enabled: !!run.data?.previousRunId });
   const corpora = useQuery(corpusQueries.list(projectId));
   const interp = useQuery({ ...interpretationQueries.detail(run.data?.interpretationId ?? ''), enabled: !!run.data });
+  const version = useQuery({ ...interpretationQueries.version(run.data?.versionId ?? ''), enabled: !!run.data });
   const [view, setView] = useState<View>('all');
 
   if (run.isLoading) return <Loader />;
@@ -154,12 +156,29 @@ export function RunDetailsPage() {
             ) : findings.isLoading ? (
               <Loader />
             ) : (
-              <FindingsTable projectId={projectId} findings={visible} versionId={r.versionId} empty={view === 'all' ? 'Находок нет' : undefined} />
+              <FindingsTable
+                projectId={projectId}
+                findings={visible}
+                versionId={r.versionId}
+                empty={view === 'all' ? 'Находок нет' : undefined}
+                exampleAction={(f, ex) =>
+                  f.kind === 'violation' && (
+                    <AddCounterexampleButton
+                      projectId={projectId}
+                      source={ex}
+                      runId={r.id}
+                      defaultNote={f.message}
+                      defaultHypothesisId={version.data && hypothesisBehind(version.data.spec, f.ruleId, f.fieldPath)}
+                    />
+                  )
+                }
+              />
             )}
           </Pane>
         </div>
       )}
       {r.status === 'cancelled' && <EmptyState title="Проверка отменена" description="Результаты не сформированы." />}
+      {r.status === 'failed' && <EmptyState title="Проверка не выполнена" description={r.error ?? 'Результаты не сформированы.'} />}
     </Page>
   );
 }

@@ -7,7 +7,7 @@ const KINDS: ActionKind[] = ['read_params', 'set_param', 'get_measurement', 'rea
 const LINK_WINDOW_MS = 5000;
 
 /** Links an action to target sessions that start within a few seconds after it. */
-function autoLink(projectId: string, timestamp: string): ActionEntry['links'] {
+export function autoLink(projectId: string, timestamp: string): ActionEntry['links'] {
   const t = Date.parse(timestamp);
   return sessionsOf(projectId)
     .filter((s) => s.session.isTarget)
@@ -46,6 +46,15 @@ function parseCsv(text: string): CreateActionInput[] {
       result: result || undefined,
     };
   });
+}
+
+/** As the backend: actions without a session (log imported before the capture) are linked when a capture is indexed. */
+export function linkPendingActions(projectId: string): void {
+  for (const action of db.actions) {
+    if (action.projectId !== projectId || action.links.length > 0) continue;
+    action.links = autoLink(projectId, action.timestamp);
+    for (const l of action.links) db.sessions.get(l.sessionId)?.session.actionIds.push(action.id);
+  }
 }
 
 export const actionHandlers = [

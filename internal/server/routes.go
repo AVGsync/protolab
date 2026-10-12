@@ -80,6 +80,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	h("GET "+v1+"/projects/{projectId}/reports", s.listReports)
 	h("POST "+v1+"/projects/{projectId}/reports", s.createReport)
 	h("GET "+v1+"/reports/{reportId}/files/{fileName}", s.reportFile)
+	h("GET "+v1+"/reports/{reportId}/bundle", s.reportBundle)
 	h("GET "+v1+"/jobs", s.listJobs)
 	h("GET "+v1+"/jobs/{jobId}", s.getJob)
 	h("POST "+v1+"/jobs/{jobId}/cancel", s.cancelJob)
@@ -515,6 +516,19 @@ func (s *server) reportFile(w http.ResponseWriter, r *http.Request) error {
 	defer f.Close()
 	attachment(w, name, ctype)
 	_, _ = io.Copy(w, f)
+	return nil
+}
+
+func (s *server) reportBundle(w http.ResponseWriter, r *http.Request) error {
+	name, write, err := s.app.ReportBundle(r.PathValue("reportId"))
+	if err != nil {
+		return err
+	}
+	attachment(w, name, "application/zip")
+	if err := write(w); err != nil {
+		// Headers are already sent; the truncated archive is detected by the client.
+		s.log.Error("report bundle failed", "report", r.PathValue("reportId"), "err", err)
+	}
 	return nil
 }
 

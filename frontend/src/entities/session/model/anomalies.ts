@@ -1,3 +1,4 @@
+import type { Diagnostic } from '@/shared/api';
 import { countLabel } from '@/shared/lib';
 import type { Tone } from '@/shared/ui';
 import type { RoleCertainty, SessionFlags } from './types';
@@ -10,9 +11,23 @@ export interface Anomaly {
   hint: string;
 }
 
-/** Everything unusual about a session, most severe first. A clean session has none. */
-export function sessionAnomalies(flags: SessionFlags, roles?: RoleCertainty): Anomaly[] {
+/**
+ * Everything unusual about a session, most severe first. A clean session has none.
+ * Diagnostics tell apart what the flags cannot: a failed reassembly, a stream cut at the size limit,
+ * and damaged packets (checksum_error) among checksum offloading (checksum_offload).
+ */
+export function sessionAnomalies(flags: SessionFlags, roles?: RoleCertainty, diagnostics: Diagnostic[] = []): Anomaly[] {
+  const diagnostic = (code: string) => diagnostics.find((d) => d.code === code);
+  // The flags of a session that could not be reassembled say nothing: only this is shown.
+  if (diagnostic('reassembly_failed'))
+    return [{ tone: 'danger', text: 'сборка не удалась', hint: 'Внутренняя ошибка сборки соединения: пакеты сохранены, байты потоков не восстановлены' }];
   const list: Anomaly[] = [];
+  if (diagnostic('stream_too_large'))
+    list.push({
+      tone: 'danger',
+      text: 'поток обрезан пределом',
+      hint: 'Поток превысил защитный предел размера: байты сверх предела не сохранены (пределы на странице «Система»)',
+    });
   if (flags.gaps > 0)
     list.push({
       tone: 'danger',
@@ -28,6 +43,14 @@ export function sessionAnomalies(flags: SessionFlags, roles?: RoleCertainty): An
   if (!flags.handshake)
     list.push({ tone: 'warn', text: 'нет SYN', hint: 'Начало соединения не попало в запись' });
   if (roles === 'unknown') list.push({ tone: 'warn', text: 'роли не определены', hint: 'Клиент и сервер не различимы' });
+  const damaged = diagnostic('checksum_error');
+  const damagedCount = damaged ? (damaged.count ?? damaged.packetNumbers?.length ?? 1) : 0;
+  if (damaged)
+    list.push({
+      tone: 'warn',
+      text: countLabel(damagedCount, ['повреждённый пакет', 'повреждённых пакета', 'повреждённых пакетов']),
+      hint: 'Неверная контрольная сумма у отдельных пакетов среди верных: вероятно повреждение. Их seq/ack не учитываются, байты берутся, только если нет копии с верной суммой',
+    });
   if (flags.retransmissions > 0)
     list.push({
       tone: 'info',
@@ -42,11 +65,12 @@ export function sessionAnomalies(flags: SessionFlags, roles?: RoleCertainty): An
     });
   if (roles === 'inferred')
     list.push({ tone: 'muted', text: 'роли по порту', hint: 'Роли определены по порту, а не по рукопожатию' });
-  if (flags.checksumWarnings > 0)
+  const offloaded = flags.checksumWarnings - damagedCount;
+  if (offloaded > 0)
     list.push({
       tone: 'muted',
-      text: `checksum: ${flags.checksumWarnings}`,
-      hint: 'Неверная контрольная сумма TCP: возможно checksum offloading на узле захвата',
+      text: `checksum: ${offloaded}`,
+      hint: 'Неверная контрольная сумма TCP: возможно checksum offloading на узле захвата, данные используются',
     });
   return list;
 }

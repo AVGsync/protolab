@@ -59,6 +59,8 @@ export interface VerificationRun {
   previousRunId?: string;
   settings: { overlapPolicy: string; checksumPolicy: string };
   engineVersion: string;
+  /** Why a failed run produced no result (e.g. interrupted by a server stop). */
+  error?: string;
 }
 
 export interface Finding {

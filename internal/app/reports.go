@@ -1,14 +1,18 @@
 package app
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/AVGsync/protolab/internal/jobs"
 	"github.com/AVGsync/protolab/internal/model"
@@ -258,4 +262,88 @@ func (a *App) ReportFile(reportID, name string) (string, string, error) {
 		ctype = "text/markdown; charset=utf-8"
 	}
 	return filepath.Join(p.dir(), "reports", reportID, name), ctype, nil
+}
+
+// ReportBundle returns the file name and the writer of a ready report as one
+// zip: its artifacts and the captures its examples file refers to, laid out so
+// that `protolab verify --examples examples.<x>.json` works in the unpacked
+// directory. It is the hand-over package: readable report, machine-readable
+// interpretation, example inputs and expected results.
+func (a *App) ReportBundle(reportID string) (string, func(io.Writer) error, error) {
+	p, err := a.projectOf(reportID, "Отчёт")
+	if err != nil {
+		return "", nil, err
+	}
+	p.mu.Lock()
+	i := findIndex(p.st.Reports, func(r *model.Report) bool { return r.ID == reportID })
+	if i < 0 {
+		p.mu.Unlock()
+		return "", nil, notFound("Отчёт")
+	}
+	rep := p.st.Reports[i]
+	captures := map[string]bool{}
+	for _, c := range p.st.Captures {
+		captures[c.File] = true // checked paths inside the project (store.LoadDir)
+	}
+	p.mu.Unlock()
+	if rep.Status != "ready" {
+		return "", nil, conflict("not_ready", "Отчёт ещё не сформирован")
+	}
+
+	type entry struct {
+		name, path string
+		stored     bool
+	}
+	dir := filepath.Join(p.dir(), "reports", rep.ID)
+	var files []entry
+	name := rep.ID + ".zip"
+	seen := map[string]bool{}
+	for _, art := range rep.Artifacts {
+		files = append(files, entry{name: art.FileName, path: filepath.Join(dir, art.FileName)})
+		switch art.Kind {
+		case "report_md":
+			name = strings.TrimSuffix(art.FileName, ".md") + ".zip"
+		case "examples":
+			raw, err := os.ReadFile(filepath.Join(dir, art.FileName))
+			if err != nil {
+				return "", nil, err
+			}
+			var ex report.Examples
+			if err := json.Unmarshal(raw, &ex); err != nil {
+				return "", nil, err
+			}
+			for _, c := range ex.Corpora {
+				for _, s := range c.Sessions {
+					if captures[s.Capture] && !seen[s.Capture] {
+						seen[s.Capture] = true
+						files = append(files, entry{name: s.Capture, path: filepath.Join(p.dir(), filepath.FromSlash(s.Capture)), stored: true})
+					}
+				}
+			}
+		}
+	}
+	write := func(w io.Writer) error {
+		zw := zip.NewWriter(w)
+		for _, f := range files {
+			hdr := &zip.FileHeader{Name: f.name, Method: zip.Deflate, Modified: time.Now()}
+			if f.stored {
+				hdr.Method = zip.Store // captures compress poorly
+			}
+			fw, err := zw.CreateHeader(hdr)
+			if err != nil {
+				return err
+			}
+			src, err := os.Open(f.path)
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(fw, src)
+			src.Close()
+			if err != nil {
+				return err
+			}
+		}
+		return zw.Close()
+	}
+	return name, write, nil
 }

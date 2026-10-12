@@ -165,7 +165,7 @@ func compileFields(rules []spec.FieldRule) []field {
 	out := make([]field, len(rules))
 	for i := range rules {
 		fr := &rules[i]
-		f := field{src: fr, meaningStatus: meaningStatus(fr)}
+		f := field{src: fr, meaningStatus: spec.EffectiveMeaningStatus(fr)}
 		switch {
 		case spec.IsIntType(fr.Type):
 			f.kind = kindInt
@@ -220,17 +220,6 @@ func sizeRef(fr *spec.FieldRule) string {
 		}
 	}
 	return ""
-}
-
-func meaningStatus(fr *spec.FieldRule) string {
-	switch {
-	case fr.Status != "":
-		return fr.Status
-	case fr.Meaning != "":
-		return spec.MeaningHypothesis
-	default:
-		return spec.MeaningStructural
-	}
 }
 
 func intWidth(t string) int {

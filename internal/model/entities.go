@@ -118,11 +118,11 @@ const (
 	FlagKeepAlive       = "keep_alive"
 )
 
-// Gap reasons.
+// Gap reasons. A stream whose beginning was not captured has no gap: offset 0
+// is the first byte seen and DirectedStream.StartKnown is false.
 const (
-	GapLost        = "lost"
-	GapTruncated   = "truncated"
-	GapNotCaptured = "not_captured"
+	GapLost      = "lost"
+	GapTruncated = "truncated"
 )
 
 type StreamSegment struct {

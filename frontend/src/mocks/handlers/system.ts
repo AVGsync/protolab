@@ -93,6 +93,19 @@ export const systemHandlers = [
     });
   }),
 
+  http.get(`${API}/reports/:reportId/bundle`, async ({ params }) => {
+    await prelude(200);
+    const report = db.reports.find((r) => r.id === params.reportId);
+    if (!report) return notFound('Отчёт');
+    if (report.status !== 'ready') return apiError(409, 'not_ready', 'Отчёт ещё не сформирован');
+    // The real backend sends a zip of the artifacts plus the captures of the examples.
+    const files = Object.fromEntries(reportDto(report).artifacts.map((a) => [a.fileName, renderArtifact(report, a.fileName)]));
+    const bundle = { note: 'Mock-комплект (JSON). Реальный backend отдаёт .zip с файлами отчёта и исходными записями примеров.', files };
+    return new HttpResponse(JSON.stringify(bundle, null, 2), {
+      headers: { 'Content-Type': 'application/json', 'Content-Disposition': `attachment; filename="${report.id}.bundle.json"` },
+    });
+  }),
+
   http.get(`${API}/system/info`, async () => {
     await prelude(60);
     const used = [...db.sessions.values()].reduce((n, s) => n + s.streams.c2s.bytes.length + s.streams.s2c.bytes.length, 0);

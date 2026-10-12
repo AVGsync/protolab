@@ -57,8 +57,8 @@ export function SessionTable({ sessions, actions = [], onOpen }: SessionTablePro
               {s.actionIds.map((id) => actionById.get(id)?.label).filter(Boolean).join(', ') || <span className="text-muted">—</span>}
             </Td>
             <Td>
-              {sessionAnomalies(s.flags, s.roles).length > 0 ? (
-                <SessionAnomalyMark flags={s.flags} roles={s.roles} />
+              {sessionAnomalies(s.flags, s.roles, s.diagnostics).length > 0 ? (
+                <SessionAnomalyMark flags={s.flags} roles={s.roles} diagnostics={s.diagnostics} />
               ) : (
                 <SessionStatusMark status={s.status} />
               )}

@@ -86,7 +86,7 @@ export function ContextBar({
 function Anomalies({ session: s }: { session: TcpSession }) {
   const [open, setOpen] = useState(false);
   const ref = useClickOutside<HTMLDivElement>(() => setOpen(false), open);
-  const anomalies = sessionAnomalies(s.flags, s.roles);
+  const anomalies = sessionAnomalies(s.flags, s.roles, s.diagnostics);
   if (anomalies.length === 0 && s.diagnostics.length === 0) return <SessionStatusMark status={s.status} />;
 
   return (
@@ -98,7 +98,7 @@ function Anomalies({ session: s }: { session: TcpSession }) {
         title={describeAnomalies(anomalies) || 'Диагностика записи'}
         className="flex max-w-full min-w-0 items-center text-muted hover:text-fg"
       >
-        {anomalies.length > 0 ? <SessionAnomalySentence flags={s.flags} roles={s.roles} className="text-inherit" /> : <span>диагностика</span>}
+        {anomalies.length > 0 ? <SessionAnomalySentence flags={s.flags} roles={s.roles} diagnostics={s.diagnostics} className="text-inherit" /> : <span>диагностика</span>}
       </button>
       {open && (
         <div className="absolute top-8 left-0 z-40 w-[480px] rounded-ctl border border-line-strong bg-surface p-4 shadow-pop">

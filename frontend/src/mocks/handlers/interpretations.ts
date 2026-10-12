@@ -4,6 +4,20 @@ import { db, nextId, sessionInput, specHash } from '../db';
 import { parseSession, validateSpec } from '../engine/interpreter';
 import { API, apiError, list, notFound, prelude } from './utils';
 
+/**
+ * As the backend: a downloaded spec file carries "$meta" (dropped on load), and omitted lists
+ * become empty ones, so the stored spec and its hash have one canonical form.
+ */
+function normalizeSpec(input: unknown): InterpretationSpec {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return input as InterpretationSpec;
+  const { $meta: _meta, ...spec } = input as InterpretationSpec & { $meta?: unknown };
+  return {
+    ...spec,
+    messages: (spec.messages ?? []).map((m) => ({ ...m, match: m.match ?? [], fields: m.fields ?? [] })),
+    ...(spec.assertions && { assertions: spec.assertions.map((a) => ({ ...a, checks: a.checks ?? [] })) }),
+  };
+}
+
 function invalid(spec: unknown) {
   const result = validateSpec(spec);
   return result.valid ? null : apiError(422, 'invalid_spec', 'Интерпретация содержит ошибки', result.issues);
@@ -17,7 +31,8 @@ export const interpretationHandlers = [
 
   http.post(`${API}/projects/:projectId/interpretations`, async ({ params, request }) => {
     await prelude();
-    const input = (await request.json()) as CreateInterpretationInput;
+    const body = (await request.json()) as CreateInterpretationInput;
+    const input = { ...body, spec: normalizeSpec(body.spec) };
     if (!input.name?.trim()) return apiError(422, 'validation_error', 'Укажите название');
     const error = invalid(input.spec);
     if (error) return error;
@@ -50,12 +65,14 @@ export const interpretationHandlers = [
   http.post(`${API}/interpretations/validate`, async ({ request }) => {
     await prelude(60);
     const { spec } = (await request.json()) as { spec: unknown };
-    return HttpResponse.json(validateSpec(spec));
+    return HttpResponse.json(validateSpec(normalizeSpec(spec)));
   }),
 
   http.post(`${API}/interpretations/preview`, async ({ request }) => {
     await prelude(150);
-    const { spec, sessionId } = (await request.json()) as { spec: InterpretationSpec; sessionId: string };
+    const body = (await request.json()) as { spec: unknown; sessionId: string };
+    const spec = normalizeSpec(body.spec);
+    const sessionId = body.sessionId;
     const error = invalid(spec);
     if (error) return error;
     const input = sessionInput(sessionId);
@@ -78,7 +95,9 @@ export const interpretationHandlers = [
     await prelude();
     const interp = db.interpretations.find((x) => x.id === params.id);
     if (!interp) return notFound('Интерпретация');
-    const { spec, comment } = (await request.json()) as { spec: InterpretationSpec; comment: string };
+    const body = (await request.json()) as { spec: unknown; comment: string };
+    const spec = normalizeSpec(body.spec);
+    const comment = body.comment;
     const error = invalid(spec);
     if (error) return error;
     const hash = specHash(spec);

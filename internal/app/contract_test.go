@@ -1,14 +1,18 @@
 package app
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"path/filepath"
 	"slices"
 	"testing"
 
 	"github.com/AVGsync/protolab/internal/demo"
 	"github.com/AVGsync/protolab/internal/model"
+	"github.com/AVGsync/protolab/internal/store"
 )
 
 // The interpretation file a user downloads (with "$meta") is accepted back by
@@ -158,5 +162,91 @@ func TestActionsLinkedAfterCaptureImport(t *testing.T) {
 	}
 	if linked == 0 || linked != withActions {
 		t.Fatalf("linked actions %d, session action ids %d", linked, withActions)
+	}
+}
+
+// A tampered archive whose project.json points a capture outside of the
+// project is rejected; nothing is read or removed by that path.
+func TestImportRejectsCapturePathTraversal(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	p, err := a.CreateDemoProject(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var exported bytes.Buffer
+	if err := a.ExportProject(p.ID, &exported); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(exported.Bytes()), int64(exported.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tampered bytes.Buffer
+	zw := zip.NewWriter(&tampered)
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := io.ReadAll(rc)
+		rc.Close()
+		if f.Name == "project.json" {
+			var st map[string]any
+			if err := json.Unmarshal(data, &st); err != nil {
+				t.Fatal(err)
+			}
+			st["captures"].([]any)[0].(map[string]any)["file"] = "../../../../outside.pcapng"
+			data, _ = json.Marshal(st)
+		}
+		w, _ := zw.Create(f.Name)
+		w.Write(data)
+	}
+	zw.Close()
+	_, _, err = a.ImportProject("tampered.protolab.zip", bytes.NewReader(tampered.Bytes()))
+	if e, ok := AsError(err); !ok || e.Code != "invalid_archive" {
+		t.Fatalf("tampered archive: %v", err)
+	}
+	if list := a.ListProjects(); len(list) != 1 {
+		t.Fatalf("projects after a rejected import: %d", len(list))
+	}
+}
+
+// A run and a report whose process was killed mid-job are not shown as
+// running forever after a restart: they fail with an explicit reason.
+func TestInterruptedRunsAndReportsFailOnStart(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(t, dir)
+	p, err := a.CreateDemoProject(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Close()
+
+	// Simulate a process killed while a run and a report were in progress.
+	st, err := store.LoadDir(filepath.Join(dir, "projects", p.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := st.Runs[len(st.Runs)-1].Run.ID
+	st.Runs[len(st.Runs)-1].Run.Status = "running"
+	st.Reports = append(st.Reports, model.Report{ID: "rep-000000000001", ProjectID: p.ID, Status: "pending", RunIDs: []string{}, Artifacts: []model.ReportArtifact{}})
+	data, _ := json.Marshal(st)
+	if err := store.WriteFileAtomic(filepath.Join(dir, "projects", p.ID, "project.json"), data); err != nil {
+		t.Fatal(err)
+	}
+
+	b := newTestApp(t, dir)
+	got, err := b.GetRun(run)
+	if err != nil || got.Status != "failed" || got.Error == "" || got.FinishedAt == "" {
+		t.Fatalf("interrupted run after restart: %+v %v", got, err)
+	}
+	reports, _ := b.ListReports(p.ID)
+	if len(reports) != 1 || reports[0].Status != "failed" {
+		t.Fatalf("interrupted report after restart: %+v", reports)
+	}
+	// The change is stored, not only shown.
+	st, _ = store.LoadDir(filepath.Join(dir, "projects", p.ID))
+	if st.Reports[0].Status != "failed" {
+		t.Fatalf("stored report status %q", st.Reports[0].Status)
 	}
 }

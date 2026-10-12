@@ -17,7 +17,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/AVGsync/protolab/internal/model"
 )
@@ -125,7 +127,44 @@ func LoadDir(dir string) (*State, error) {
 	if st.Project.ID == "" {
 		return nil, errors.New("project.json has no project id")
 	}
+	if err := st.checkPaths(); err != nil {
+		return nil, fmt.Errorf("%s: %w", stateFile, err)
+	}
 	return &st, nil
+}
+
+var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// checkPaths rejects values of project.json that become file paths: the
+// project id (its directory), capture files, report ids and artifact names.
+// project.json comes from archives too, and a value like "../x" must not
+// reach the file system.
+func (st *State) checkPaths() error {
+	if !isFileName(st.Project.ID) {
+		return fmt.Errorf("invalid project id %q", st.Project.ID)
+	}
+	for _, c := range st.Captures {
+		if !sha256Hex.MatchString(c.SHA256) || (c.Format != "pcap" && c.Format != "pcapng") || c.File != "captures/"+c.SHA256+"."+c.Format {
+			return fmt.Errorf("capture %q: invalid file %q", c.ID, c.File)
+		}
+	}
+	for _, r := range st.Reports {
+		if !isFileName(r.ID) {
+			return fmt.Errorf("invalid report id %q", r.ID)
+		}
+		for _, a := range r.Artifacts {
+			if !isFileName(a.FileName) {
+				return fmt.Errorf("report %s: invalid file name %q", r.ID, a.FileName)
+			}
+		}
+	}
+	return nil
+}
+
+// isFileName reports a single plain file name: no separators, no "." or "..",
+// no drive letters, not hidden.
+func isFileName(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, `/\:`) && !strings.HasPrefix(name, ".")
 }
 
 // Save writes project.json atomically: a crash leaves either the old or the new file.

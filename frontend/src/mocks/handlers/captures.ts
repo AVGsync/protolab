@@ -5,6 +5,7 @@ import { generateCapture } from '../fixtures/generator';
 import { sha256Hex } from '../fixtures/hash';
 import { UPLOAD_TEMPLATE } from '../fixtures/scenarios';
 import { startJob } from '../jobs';
+import { linkPendingActions } from './actions';
 import { API, apiError, list, notFound, prelude } from './utils';
 
 /** libpcap (both byte orders, µs/ns) and pcapng section header magics. */
@@ -107,6 +108,7 @@ export const captureHandlers = [
           s.session.capture = { fileName: file.name, sha256 };
           db.sessions.set(s.session.id, s);
         }
+        linkPendingActions(project.id);
         return { type: 'capture', id };
       },
       onCancel: () => {

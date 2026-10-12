@@ -4,7 +4,7 @@
  * code exists only so the UI can be developed and demoed without it.
  */
 import type { ActionEntry } from '@/entities/action';
-import type { FieldRule, InterpretationSpec, MessageRule, SpecIssue, ValidationResult } from '@/entities/interpretation';
+import { effectiveMeaningStatus, type FieldRule, type InterpretationSpec, type MessageRule, type SpecIssue, type ValidationResult } from '@/entities/interpretation';
 import type { Message, MessageStatus, ParsedField } from '@/entities/message';
 import type { TcpSession } from '@/entities/session';
 import type { StreamGap, StreamSegment } from '@/entities/stream';
@@ -200,7 +200,7 @@ function parseFields(rules: FieldRule[], ctx: ParseCtx, base: number, pathPrefix
       display: '',
       status: 'ok',
       meaning: rule.meaning,
-      meaningStatus: rule.status ?? (rule.meaning ? 'hypothesis' : 'structural'),
+      meaningStatus: effectiveMeaningStatus(rule),
       hypothesisId: rule.hypothesis,
     };
     out.push(field);

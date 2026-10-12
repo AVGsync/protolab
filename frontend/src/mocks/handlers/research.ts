@@ -40,15 +40,31 @@ export const researchHandlers = [
     if (!h) return notFound('Гипотеза');
     const patch = (await request.json()) as UpdateHypothesisInput;
     const now = new Date().toISOString();
-    if (patch.status && patch.status !== h.status) {
-      if (!patch.note?.trim()) return apiError(422, 'validation_error', 'Укажите основание смены статуса');
-      h.history.push({ at: now, status: patch.status, note: patch.note.trim() });
+    // As the backend: everything is validated first, a rejected request changes nothing.
+    const statusChange = patch.status !== undefined && patch.status !== h.status;
+    if (statusChange && !patch.note?.trim()) return apiError(422, 'validation_error', 'Укажите основание смены статуса');
+    if (patch.title !== undefined && !patch.title.trim()) return apiError(422, 'validation_error', 'Формулировка не может быть пустой');
+    const observationIds = patch.observationIds && [...new Set(patch.observationIds)];
+    const missing = observationIds?.find((id) => !db.observations.some((o) => o.id === id));
+    if (missing) return apiError(422, 'validation_error', `Наблюдение ${missing} не найдено`);
+
+    if (statusChange && patch.status) {
+      h.history.push({ at: now, status: patch.status, note: patch.note!.trim() });
       h.status = patch.status;
     }
-    if (patch.title !== undefined) h.title = patch.title;
-    if (patch.statement !== undefined) h.statement = patch.statement;
+    if (patch.title !== undefined) h.title = patch.title.trim();
+    if (patch.statement !== undefined) h.statement = patch.statement.trim();
     if (patch.alternatives) h.alternatives = patch.alternatives;
-    if (patch.observationIds) h.observationIds = patch.observationIds;
+    if (observationIds) {
+      // The link is kept on both sides: observations?hypothesisId= reads the observation side.
+      for (const o of db.observations) {
+        const linked = observationIds.includes(o.id);
+        const has = o.hypothesisIds.includes(h.id);
+        if (linked && !has) o.hypothesisIds.push(h.id);
+        if (!linked && has) o.hypothesisIds = o.hypothesisIds.filter((id) => id !== h.id);
+      }
+      h.observationIds = observationIds;
+    }
     if (patch.counterexamples) h.counterexamples = patch.counterexamples;
     h.updatedAt = now;
     return HttpResponse.json(h);

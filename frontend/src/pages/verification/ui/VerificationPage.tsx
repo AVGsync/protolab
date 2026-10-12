@@ -88,7 +88,9 @@ export function VerificationPage() {
                   <Td>{r.summary ? <RunOutcome summary={r.summary} /> : <span className="text-muted">—</span>}</Td>
                   <Td>
                     <span className="flex flex-wrap gap-1">
-                      <RunStatusMark status={r.status} />
+                      <span title={r.error}>
+                        <RunStatusMark status={r.status} />
+                      </span>
                       {r.stale && <StaleTag reasons={r.staleReasons} />}
                     </span>
                   </Td>

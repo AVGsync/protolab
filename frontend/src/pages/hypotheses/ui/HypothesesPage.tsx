@@ -10,7 +10,7 @@ import {
   type HypothesisStatus,
 } from '@/entities/hypothesis';
 import { observationQueries, SourceRefLink } from '@/entities/observation';
-import { CreateHypothesisButton, HypothesisStatusForm } from '@/features/manage-hypothesis';
+import { CreateHypothesisButton, HypothesisStatusForm, LinkObservationForm, UnlinkObservationButton } from '@/features/manage-hypothesis';
 import { routes } from '@/shared/config';
 import { cn, formatDateTime, useRequiredParams } from '@/shared/lib';
 import { Disclosure, EmptyState, ErrorState, Loader, Note, Page, PageHeader, Pane, SectionTitle, Segmented, Status, Tag } from '@/shared/ui';
@@ -123,17 +123,23 @@ function HypothesisDetails({ projectId, hypothesis: h }: { projectId: string; hy
                 <SourceRefLink projectId={projectId} source={o.source} />
                 <code className="font-mono text-2xs text-fg">{o.snapshotHex}</code>
                 {o.integrity === 'mismatch' && <Status tone="danger">байты источника изменились</Status>}
+                <span className="ml-auto">
+                  <UnlinkObservationButton hypothesis={h} observationId={o.id} />
+                </span>
               </div>
             </li>
           ))}
           {observations.data?.items.length === 0 && <p className="text-xs text-muted">Нет связанных наблюдений.</p>}
         </ul>
+        <LinkObservationForm key={h.id} hypothesis={h} />
       </div>
 
       <div>
         <SectionTitle>Контрпримеры ({h.counterexamples.length})</SectionTitle>
         {h.counterexamples.length === 0 ? (
-          <p className="text-xs text-muted">Контрпримеров не найдено. Это не доказательство — расширьте корпус.</p>
+          <p className="text-xs text-muted">
+            Контрпримеров не найдено. Это не доказательство — расширьте корпус. Контрпример добавляется из находок проверки.
+          </p>
         ) : (
           <ul className="flex flex-col gap-3">
             {h.counterexamples.map((c, i) => (

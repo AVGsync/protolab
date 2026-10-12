@@ -265,7 +265,8 @@ func (a *App) ImportProject(fileName string, r io.Reader) (model.Project, string
 	p := newProject(a, st)
 	a.register(p)
 	a.log.Info("project imported", "project", p.id, "file", fileName)
-	a.resumeIndexing(p) // the archive was made in the middle of a capture import
+	a.failInterrupted(p) // the archive was made in the middle of a run or a report
+	a.resumeIndexing(p)  // ... or of a capture import
 
 	job := a.jobs.Start(p.id, "import_project", "Импорт проекта "+cleanFileName(fileName), func(ctx context.Context, progress jobs.Progress) (*model.JobResult, error) {
 		ids := p.captureIDs()

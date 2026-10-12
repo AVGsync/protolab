@@ -12,9 +12,18 @@ import { CopyButton, ErrorState, Loader, Page, PageHeader, Pane, Status, Table, 
 function CaptureAttention({ capture }: { capture: Capture }) {
   if (capture.status !== 'ready') return <CaptureStatusMark status={capture.status} />;
   if (capture.integrity === 'mismatch') return <IntegrityMark integrity={capture.integrity} />;
-  const warnings = capture.diagnostics.filter((d) => d.level !== 'info').length;
+  const errors = capture.diagnostics.filter((d) => d.level === 'error').length;
+  const warnings = capture.diagnostics.filter((d) => d.level === 'warning').length;
+  const warningText = countLabel(warnings, ['предупреждение', 'предупреждения', 'предупреждений']);
+  // Errors (damaged records, conflicting data, streams cut at a limit) outrank warnings.
+  if (errors > 0)
+    return (
+      <Status tone="danger" title={warnings > 0 ? `и ${warningText}` : undefined}>
+        {countLabel(errors, ['ошибка', 'ошибки', 'ошибок'])}
+      </Status>
+    );
   if (warnings === 0) return null;
-  return <Status tone="warn">{countLabel(warnings, ['предупреждение', 'предупреждения', 'предупреждений'])}</Status>;
+  return <Status tone="warn">{warningText}</Status>;
 }
 
 export function CapturesPage() {

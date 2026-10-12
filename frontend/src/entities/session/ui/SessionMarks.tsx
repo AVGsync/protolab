@@ -1,4 +1,4 @@
-import type { Direction, Endpoint } from '@/shared/api';
+import type { Diagnostic, Direction, Endpoint } from '@/shared/api';
 import { cn } from '@/shared/lib';
 import { Arrow, Status, Tag } from '@/shared/ui';
 import { DIRECTION_LABEL } from '../model/labels';
@@ -12,8 +12,8 @@ export function SessionStatusMark({ status }: { status: SessionStatus }) {
 }
 
 /** The most severe anomaly of a session (at most one marker per row); the rest is in the tooltip. */
-export function SessionAnomalyMark({ flags, roles }: { flags: SessionFlags; roles?: RoleCertainty }) {
-  const [first, ...rest] = sessionAnomalies(flags, roles);
+export function SessionAnomalyMark({ flags, roles, diagnostics }: { flags: SessionFlags; roles?: RoleCertainty; diagnostics?: Diagnostic[] }) {
+  const [first, ...rest] = sessionAnomalies(flags, roles, diagnostics);
   if (!first) return null;
   const title = [first, ...rest].map((a) => `${a.text}: ${a.hint}`).join('\n');
   return (
@@ -25,8 +25,18 @@ export function SessionAnomalyMark({ flags, roles }: { flags: SessionFlags; role
 }
 
 /** One plain sentence about everything unusual in the session; nothing when the session is clean. */
-export function SessionAnomalySentence({ flags, roles, className }: { flags: SessionFlags; roles?: RoleCertainty; className?: string }) {
-  const anomalies = sessionAnomalies(flags, roles);
+export function SessionAnomalySentence({
+  flags,
+  roles,
+  diagnostics,
+  className,
+}: {
+  flags: SessionFlags;
+  roles?: RoleCertainty;
+  diagnostics?: Diagnostic[];
+  className?: string;
+}) {
+  const anomalies = sessionAnomalies(flags, roles, diagnostics);
   if (anomalies.length === 0) return null;
   return (
     <Status tone={anomalies[0].tone} className={cn('max-w-full', className)}>

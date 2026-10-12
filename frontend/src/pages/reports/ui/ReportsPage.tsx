@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { projectQueries } from '@/entities/project';
-import { reportQueries, type ArtifactKind } from '@/entities/report';
+import { reportApi, reportQueries, type ArtifactKind } from '@/entities/report';
 import { ExportProjectButton } from '@/features/export-project';
 import { GenerateReportButton } from '@/features/generate-report';
 import { ProjectSettingsButton } from '@/features/project-settings';
@@ -105,9 +105,17 @@ export function ReportsPage() {
                   ))}
                 </ul>
                 <div>
-                  <div className="mb-1 flex items-center justify-between">
-                    <p className="text-xs text-muted">Повторное применение к другим данным</p>
-                    <CopyButton value={r.reproduceCommand} label="копировать" />
+                  <div className="mb-1 flex items-center justify-between gap-3">
+                    <p className="text-xs text-muted">
+                      Повторное применение к другим данным. Комплект содержит файлы выше и исходные записи примеров: команды выполняются в
+                      его распакованном каталоге.
+                    </p>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <DownloadButton href={reportApi.bundleUrl(r.id)} fileName={`${r.id}.zip`} size="xs">
+                        Комплект (.zip)
+                      </DownloadButton>
+                      <CopyButton value={r.reproduceCommand} label="копировать" />
+                    </span>
                   </div>
                   <pre className="overflow-x-auto border border-line bg-bg px-3 py-2 font-mono text-xs">{r.reproduceCommand}</pre>
                 </div>

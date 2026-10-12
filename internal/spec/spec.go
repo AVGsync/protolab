@@ -112,6 +112,20 @@ type FieldRule struct {
 	Hypothesis string `json:"hypothesis,omitempty"`
 }
 
+// EffectiveMeaningStatus is what backs the meaning of a field: its status, else
+// "hypothesis" when a meaning is claimed, else "structural". The engine, the
+// report and the UI all show this value.
+func EffectiveMeaningStatus(f *FieldRule) string {
+	switch {
+	case f.Status != "":
+		return f.Status
+	case f.Meaning != "":
+		return MeaningHypothesis
+	default:
+		return MeaningStructural
+	}
+}
+
 // Expect is checked against the raw (unscaled) value.
 type Expect struct {
 	Equals *float64  `json:"equals,omitempty"`

@@ -16,4 +16,5 @@ export type {
   SpecIssue,
   ValidationResult,
 } from './model/types';
+export { effectiveMeaningStatus, hypothesisBehind } from './model/meaning';
 export { VersionLabel } from './ui/VersionLabel';

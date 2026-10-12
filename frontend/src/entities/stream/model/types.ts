@@ -11,7 +11,8 @@ export interface StreamSegment {
   flags: SegmentFlag[];
 }
 
-export type GapReason = 'lost' | 'truncated' | 'not_captured';
+/** A missed beginning of the stream is not a gap: see DirectedStream.startKnown. */
+export type GapReason = 'lost' | 'truncated';
 
 /** Bytes that are known to exist but were not captured. Never substituted by zeros. */
 export interface StreamGap {

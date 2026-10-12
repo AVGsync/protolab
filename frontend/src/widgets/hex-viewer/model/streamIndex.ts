@@ -35,7 +35,7 @@ export interface GapLabel {
   text: string;
 }
 
-const GAP_TEXT = { lost: 'потеря', truncated: 'усечение', not_captured: 'нет начала' } as const;
+const GAP_TEXT = { lost: 'потеря', truncated: 'усечение' } as const;
 
 export const gapText = (gap: StreamGap): string => `${GAP_TEXT[gap.reason]} ${gap.length} Б`;
 

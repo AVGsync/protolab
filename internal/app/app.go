@@ -108,6 +108,7 @@ func New(cfg Config) (*App, error) {
 	for _, s := range states {
 		p := newProject(a, s)
 		a.register(p)
+		a.failInterrupted(p)
 		a.resumeIndexing(p)
 	}
 	a.log.Info("data directory opened", "path", st.Root(), "projects", len(states))
