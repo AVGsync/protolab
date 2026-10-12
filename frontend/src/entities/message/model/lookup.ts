@@ -41,3 +41,11 @@ export const fieldRange = (message: Message, field: Pick<ParsedField, 'offset' |
   offset: message.offset + field.offset,
   length: field.length,
 });
+
+/** A field under the pointer in one pane: the others (hex, lanes, table) highlight the same bytes. */
+export interface FieldLink {
+  messageIndex: number;
+  path: string;
+  /** Bytes of the field in the directed stream. */
+  range: ByteRange;
+}

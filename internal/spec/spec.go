@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 )
 
@@ -179,7 +180,8 @@ func Decode(raw []byte) (*Spec, error) {
 	if err := dec.Decode(&s); err != nil {
 		return nil, err
 	}
-	if dec.More() {
+	// More() misses a stray "}" or "]"; only EOF means nothing follows.
+	if _, err := dec.Token(); err != io.EOF {
 		return nil, errors.New("unexpected data after the JSON object")
 	}
 	return &s, nil

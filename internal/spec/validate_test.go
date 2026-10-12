@@ -217,6 +217,8 @@ func TestParseDecodeErrors(t *testing.T) {
 		{"bad character", "{\n  \"format\": \"protolab/v1\",\n  \"protocol\" \"P\"\n}", "$", "Некорректный JSON: недопустимый символ '\"' (строка 3, столбец 14)"},
 		{"bad literal", `{"format": tru}`, "$", "Некорректный JSON: недопустимый символ '}' (строка 1, столбец 15)"},
 		{"trailing data", `{"format":"protolab/v1"} {"x":1}`, "$", "Лишние данные после JSON-объекта"},
+		{"trailing brace", `{"format":"protolab/v1"}}`, "$", "Лишние данные после JSON-объекта"},
+		{"trailing bracket", "{\"format\":\"protolab/v1\"}\n]", "$", "Лишние данные после JSON-объекта"},
 		{"unknown top-level field", `{"format":"protolab/v1","extra":1}`, "$.extra", `Неизвестное поле "extra"`},
 		{"unknown nested field", `{"framing":{"kind":"fixed","size":4},"messages":[{"id":"a","match":[],"fields":[{"name":"x","offset":0,"type":"u8"},{"name":"y","offset":1,"type":"u8","scal":2}]}]}`,
 			"$.messages[0].fields[1].scal", `Неизвестное поле "scal"`},

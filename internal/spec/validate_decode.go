@@ -122,7 +122,7 @@ func locateDecodeError(raw []byte) (Issue, bool) {
 	if issue != nil {
 		return *issue, true
 	}
-	if dec.More() {
+	if _, err := dec.Token(); err != io.EOF {
 		return errorIssue("$", "Лишние данные после JSON-объекта"), true
 	}
 	return Issue{}, false
