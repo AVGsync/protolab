@@ -250,3 +250,61 @@ func TestInterruptedRunsAndReportsFailOnStart(t *testing.T) {
 		t.Fatalf("stored report status %q", st.Reports[0].Status)
 	}
 }
+
+// A rejected create links nothing: the existing side of the link is left as it was.
+func TestRejectedCreateLeavesLinksUntouched(t *testing.T) {
+	a := newTestApp(t, t.TempDir())
+	p, err := a.CreateDemoProject(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs, _ := a.ListObservations(p.ID, ObservationFilter{})
+	hyps, _ := a.ListHypotheses(p.ID)
+	before := func() (map[string][]string, map[string][]string) {
+		o, h := map[string][]string{}, map[string][]string{}
+		os, _ := a.ListObservations(p.ID, ObservationFilter{})
+		for _, x := range os {
+			o[x.ID] = slices.Clone(x.HypothesisIDs)
+		}
+		hs, _ := a.ListHypotheses(p.ID)
+		for _, x := range hs {
+			h[x.ID] = slices.Clone(x.ObservationIDs)
+		}
+		return o, h
+	}
+	obsLinks, hypLinks := before()
+
+	_, err = a.CreateHypothesis(p.ID, model.CreateHypothesisInput{Title: "H", ObservationIDs: []string{obs[0].ID, "obs-missing"}})
+	if e, ok := AsError(err); !ok || e.Status != 422 {
+		t.Fatalf("hypothesis with an unknown observation: %v", err)
+	}
+	in := model.CreateObservationInput{Note: "n", Source: obs[0].Source, HypothesisIDs: []string{hyps[0].ID, "hyp-missing"}}
+	_, err = a.CreateObservation(p.ID, in)
+	if e, ok := AsError(err); !ok || e.Status != 422 {
+		t.Fatalf("observation with an unknown hypothesis: %v", err)
+	}
+
+	o2, h2 := before()
+	for id, links := range obsLinks {
+		if !slices.Equal(o2[id], links) {
+			t.Errorf("observation %s: hypothesisIds %v -> %v", id, links, o2[id])
+		}
+	}
+	for id, links := range hypLinks {
+		if !slices.Equal(h2[id], links) {
+			t.Errorf("hypothesis %s: observationIds %v -> %v", id, links, h2[id])
+		}
+	}
+	if len(o2) != len(obsLinks) || len(h2) != len(hypLinks) {
+		t.Errorf("entities added by rejected creates: %d/%d -> %d/%d", len(obsLinks), len(hypLinks), len(o2), len(h2))
+	}
+
+	// Duplicates in the input are stored once.
+	h, err := a.CreateHypothesis(p.ID, model.CreateHypothesisInput{Title: "D", ObservationIDs: []string{obs[0].ID, obs[0].ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h.ObservationIDs) != 1 {
+		t.Errorf("observationIds = %v, want one id", h.ObservationIDs)
+	}
+}

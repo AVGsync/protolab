@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/AVGsync/protolab/internal/app"
+	"github.com/AVGsync/protolab/internal/demo"
 	"github.com/AVGsync/protolab/internal/model"
 	"github.com/AVGsync/protolab/internal/report"
 )
@@ -129,5 +131,31 @@ func TestReportBundleReproduces(t *testing.T) {
 	}
 	if code := runApply([]string{"--spec", specFile, "--input", capture, "--out", filepath.Join(t.TempDir(), "out.json")}); code != 0 {
 		t.Fatalf("apply: exit %d", code)
+	}
+}
+
+// An unknown overlap policy is refused, not silently treated as "first".
+func TestApplyRejectsUnknownOverlapPolicy(t *testing.T) {
+	ds := demo.Build(demo.Options{})
+	dir := t.TempDir()
+	specFile, capture := filepath.Join(dir, "spec.json"), filepath.Join(dir, ds.Captures[0].FileName)
+	sp, err := json.Marshal(ds.Versions[len(ds.Versions)-1].Spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(specFile, sp, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(capture, ds.Captures[0].Data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	args := func(policy string) []string {
+		return []string{"--spec", specFile, "--input", capture, "--out", filepath.Join(dir, policy+".json"), "--overlap", policy}
+	}
+	if code := runApply(args("last")); code != 0 {
+		t.Fatalf("runApply --overlap last: exit %d, want 0", code)
+	}
+	if code := runApply(args("bogus")); code == 0 {
+		t.Fatal("runApply --overlap bogus: exit 0, want an error")
 	}
 }

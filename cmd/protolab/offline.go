@@ -111,6 +111,9 @@ func runApply(args []string) int {
 	if *specPath == "" || *input == "" {
 		return fail("нужны --spec и --input")
 	}
+	if *overlap != "first" && *overlap != "last" {
+		return fail("--overlap: ожидается first или last, получено %q", *overlap)
+	}
 	sp, hash, err := loadSpec(*specPath)
 	if err != nil {
 		return fail("%v", err)

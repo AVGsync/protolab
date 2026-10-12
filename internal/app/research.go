@@ -45,7 +45,7 @@ func (a *App) addHypothesis(p *project, id string, in model.CreateHypothesisInpu
 		Title:           title,
 		Statement:       strings.TrimSpace(in.Statement),
 		Status:          status,
-		ObservationIDs:  nonNil(in.ObservationIDs),
+		ObservationIDs:  uniqueIDs(in.ObservationIDs),
 		Counterexamples: []model.Counterexample{},
 		Alternatives:    nonNil(in.Alternatives),
 		RuleRefs:        nonNil(in.RuleRefs),
@@ -54,11 +54,16 @@ func (a *App) addHypothesis(p *project, id string, in model.CreateHypothesisInpu
 		History:         history,
 	}
 	err := p.update(func(st *store.State) error {
-		for _, oid := range h.ObservationIDs {
-			i := findIndex(st.Observations, func(o *model.Observation) bool { return o.ID == oid })
-			if i < 0 {
+		// Every id is checked before the first link is made: a rejected
+		// request changes nothing.
+		idx := make([]int, len(h.ObservationIDs))
+		for k, oid := range h.ObservationIDs {
+			idx[k] = findIndex(st.Observations, func(o *model.Observation) bool { return o.ID == oid })
+			if idx[k] < 0 {
 				return invalid("Наблюдение %s не найдено", oid)
 			}
+		}
+		for _, i := range idx {
 			if !slices.Contains(st.Observations[i].HypothesisIDs, h.ID) {
 				st.Observations[i].HypothesisIDs = append(st.Observations[i].HypothesisIDs, h.ID)
 			}
@@ -266,16 +271,21 @@ func (a *App) addObservation(p *project, in model.CreateObservationInput, create
 		Source:        src,
 		SnapshotHex:   snap,
 		Integrity:     "ok",
-		HypothesisIDs: nonNil(in.HypothesisIDs),
+		HypothesisIDs: uniqueIDs(in.HypothesisIDs),
 		Tags:          nonNil(in.Tags),
 		CreatedAt:     createdAt,
 	}
 	err = p.update(func(st *store.State) error {
-		for _, hid := range o.HypothesisIDs {
-			i := findIndex(st.Hypotheses, func(h *model.Hypothesis) bool { return h.ID == hid })
-			if i < 0 {
+		// Every id is checked before the first link is made: a rejected
+		// request changes nothing.
+		idx := make([]int, len(o.HypothesisIDs))
+		for k, hid := range o.HypothesisIDs {
+			idx[k] = findIndex(st.Hypotheses, func(h *model.Hypothesis) bool { return h.ID == hid })
+			if idx[k] < 0 {
 				return invalid("Гипотеза %s не найдена", hid)
 			}
+		}
+		for _, i := range idx {
 			if !slices.Contains(st.Hypotheses[i].ObservationIDs, o.ID) {
 				st.Hypotheses[i].ObservationIDs = append(st.Hypotheses[i].ObservationIDs, o.ID)
 			}
@@ -317,4 +327,15 @@ func (a *App) DeleteObservation(id string) error {
 		}
 		return nil
 	})
+}
+
+// uniqueIDs drops repeated ids, keeping the first occurrence; never nil.
+func uniqueIDs(ids []string) []string {
+	out := []string{}
+	for _, id := range ids {
+		if !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
