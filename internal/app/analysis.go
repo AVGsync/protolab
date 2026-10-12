@@ -200,7 +200,8 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 		return nil, err
 	}
 
-	res := &captureAnalysis{captureID: in.capture.ID, format: string(r.Format()), seq: analysisSeq.Add(1)}
+	// diagnostics is never nil: the API always sends a list.
+	res := &captureAnalysis{captureID: in.capture.ID, format: string(r.Format()), seq: analysisSeq.Add(1), diagnostics: []model.Diagnostic{}}
 	asm := tcpflow.NewAssembler(tcpflow.Options{
 		OverlapPolicy:  in.settings.OverlapPolicy,
 		TargetPorts:    in.settings.TargetPorts,

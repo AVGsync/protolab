@@ -72,6 +72,10 @@ func (a *App) CreateReport(projectID string, in model.CreateReportInput) (model.
 			if st.Runs[ri].Run.Status != "succeeded" {
 				return invalid("Проверка %s не завершена", rid)
 			}
+			// The examples file replays every run with the report's spec.
+			if r := st.Runs[ri].Run; r.VersionID != v.ID {
+				return invalid("Проверка %s выполнена на v%d, а отчёт формируется по v%d", rid, r.Version, v.Version)
+			}
 		}
 		title := strings.TrimSpace(in.Title)
 		if title == "" {

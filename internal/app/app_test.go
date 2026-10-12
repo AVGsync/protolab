@@ -66,6 +66,57 @@ func TestDemoProjectEndToEnd(t *testing.T) {
 		if c.Status != "ready" || c.Integrity != "ok" || c.PacketCount == 0 {
 			t.Fatalf("capture %s: status %s integrity %s packets %d", c.FileName, c.Status, c.Integrity, c.PacketCount)
 		}
+		if c.Diagnostics == nil {
+			t.Errorf("capture %s: diagnostics must be a list, not null", c.FileName)
+		}
+	}
+	// Background frames that are not TCP/IPv4 are skipped with a diagnostic.
+	skipped := map[string]int{}
+	for _, d := range captures[0].Diagnostics {
+		skipped[d.Code] = d.Count
+	}
+	if skipped["non_ip"] != 2 || skipped["non_tcp"] != 3 || skipped["ipv6_unsupported"] != 1 {
+		t.Errorf("non-TCP diagnostics of %s: %v", captures[0].FileName, captures[0].Diagnostics)
+	}
+
+	// A reused client port starts a new session; the capture defects of day 3
+	// are reported, not hidden.
+	sessions, err := a.ListSessions(p.ID, SessionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused := 0
+	defects := map[string]bool{}
+	for _, s := range sessions {
+		if s.CaptureID == captures[0].ID && s.Client.Port == 51003 {
+			reused++
+		}
+		if s.CaptureID != captures[2].ID {
+			continue
+		}
+		for _, d := range s.Diagnostics {
+			defects[d.Code] = true
+		}
+		for _, dir := range model.Directions {
+			st, err := a.Stream(s.ID, dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, g := range st.Gaps {
+				defects["gap_"+g.Reason] = true
+			}
+			if !st.StartKnown {
+				defects["start_unknown"] = true
+			}
+		}
+	}
+	if reused != 2 {
+		t.Errorf("sessions from client port 51003: %d, want 2", reused)
+	}
+	for _, code := range []string{"tcp_gap", "tcp_truncated", "overlap_conflict", "missing_handshake", "checksum_offload", "gap_lost", "gap_truncated", "start_unknown"} {
+		if !defects[code] {
+			t.Errorf("defect %s not reported for %s: %v", code, captures[2].FileName, defects)
+		}
 	}
 
 	runs, err := a.ListRuns(p.ID)
@@ -109,6 +160,35 @@ func TestDemoProjectEndToEnd(t *testing.T) {
 		if o.Integrity != "ok" || strings.Contains(o.SnapshotHex, "??") {
 			t.Errorf("observation %q: integrity %s snapshot %s", o.Note, o.Integrity, o.SnapshotHex)
 		}
+	}
+	// A counterexample cites a run and points at bytes that run flagged.
+	counterexamples := 0
+	for _, h := range hyps {
+		for _, ce := range h.Counterexamples {
+			counterexamples++
+			findings, err := a.ListFindings(ce.RunID, model.FindingViolation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, f := range findings {
+				for _, ex := range f.Examples {
+					found = found || (ex.SessionID == ce.Source.SessionID && ex.Direction == ce.Source.Direction &&
+						ex.Offset == ce.Source.Offset && ex.Length == ce.Source.Length)
+				}
+			}
+			if !found {
+				t.Errorf("counterexample %q of %q is not a finding of run %s", ce.Note, h.Title, ce.RunID)
+			}
+		}
+	}
+	if counterexamples == 0 {
+		t.Error("the refuted hypothesis has no counterexamples")
+	}
+
+	// The examples of a report replay its runs with the report's spec.
+	if _, _, err := a.CreateReport(p.ID, model.CreateReportInput{VersionID: v3.VersionID, RunIDs: []string{runBy(t, runs, 1, "Расширенный").ID}}); err == nil {
+		t.Error("a report must not include runs of another version")
 	}
 
 	// Report with examples that reference the original captures.

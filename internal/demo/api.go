@@ -94,5 +94,32 @@ type Options struct {
 	HypothesisID func(seed string) string
 }
 
-// Build generates the dataset deterministically.
-func Build(opt Options) Dataset { panic("not implemented") }
+// Build generates the dataset deterministically: the same options give the
+// same bytes on every call.
+func Build(opt Options) Dataset {
+	hyp := opt.HypothesisID
+	if hyp == nil {
+		hyp = func(seed string) string { return seed }
+	}
+	ds := Dataset{
+		ProjectName:        "Термоконтроллер TC-200",
+		ProjectDescription: "Обмен штатного клиента TC-Config с контроллером по TCP/5020: чтение параметров, изменение настроек, измерения.",
+		TargetPorts:        []int{devicePort},
+
+		Actions: actionLog(),
+
+		InterpretationName:        "ThermoLink",
+		InterpretationDescription: "Бинарный протокол TC-Config ↔ TC-200: кадры A5, длина u16 LE, контрольная сумма.",
+		Versions:                  versions(hyp),
+
+		Hypotheses:      hypotheses(),
+		Observations:    observations(),
+		Counterexamples: counterexamples(),
+		Corpora:         corpora(),
+		Runs:            runs(),
+	}
+	for _, cs := range captureSpecs() {
+		ds.Captures = append(ds.Captures, Capture{FileName: cs.fileName, Data: cs.render()})
+	}
+	return ds
+}

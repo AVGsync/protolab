@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/AVGsync/protolab/internal/demo"
 	"github.com/AVGsync/protolab/internal/model"
@@ -139,8 +140,17 @@ func (a *App) CreateDemoProject(ctx context.Context) (model.Project, error) {
 	}
 
 	var runIDs []string
+	lastStart := ""
 	for _, rs := range ds.Runs {
-		rec, err := a.newRun(p, versions[rs.Version].ID, corpora[rs.Corpus].ID, model.Now())
+		// The runs follow each other within milliseconds; distinct start times
+		// keep their order, and with it previousRunId, unambiguous.
+		startedAt := model.Now()
+		if startedAt <= lastStart {
+			t, _ := time.Parse(model.EntityTimeLayout, lastStart)
+			startedAt = model.EntityTime(t.Add(time.Millisecond))
+		}
+		lastStart = startedAt
+		rec, err := a.newRun(p, versions[rs.Version].ID, corpora[rs.Corpus].ID, startedAt)
 		if err != nil {
 			return fail("проверка", err)
 		}
@@ -151,13 +161,24 @@ func (a *App) CreateDemoProject(ctx context.Context) (model.Project, error) {
 	}
 
 	for _, ce := range ds.Counterexamples {
-		src, err := a.locateField(p, captureIDs, ce.Ref, &latest.Spec, latest.Hash)
+		// A counterexample of a run points at the bytes that run flagged, as
+		// its version parses them.
+		v, runID := latest, ""
+		if ce.Run >= 0 && ce.Run < len(runIDs) {
+			v, runID = versions[ds.Runs[ce.Run].Version], runIDs[ce.Run]
+		}
+		src, err := a.locateField(p, captureIDs, ce.Ref, &v.Spec, v.Hash)
 		if err != nil {
 			return fail("контрпримеры", err)
 		}
-		runID := ""
-		if ce.Run >= 0 && ce.Run < len(runIDs) {
-			runID = runIDs[ce.Run]
+		if runID != "" {
+			findings, err := a.ListFindings(runID, model.FindingViolation)
+			if err != nil {
+				return fail("контрпримеры", err)
+			}
+			if !flagged(findings, src) {
+				return fail("контрпримеры", fmt.Errorf("проверка v%d не отметила поле %s.%s в %s (порт %d)", v.Version, ce.Ref.Rule, ce.Ref.Field, ce.Ref.CaptureFile, ce.Ref.ClientPort))
+			}
 		}
 		id := hypID(ce.HypothesisID)
 		if err := p.update(func(st *store.State) error {
@@ -174,6 +195,18 @@ func (a *App) CreateDemoProject(ctx context.Context) (model.Project, error) {
 
 	a.log.Info("demo project created", "project", p.id)
 	return p.dto(), nil
+}
+
+// flagged reports whether a violation finding has src among its examples.
+func flagged(findings []model.Finding, src model.SourceRef) bool {
+	for _, f := range findings {
+		for _, ex := range f.Examples {
+			if ex.SessionID == src.SessionID && ex.Direction == src.Direction && ex.Offset == src.Offset && ex.Length == src.Length {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // locateField resolves a demo field reference to the exact source bytes.

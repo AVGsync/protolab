@@ -25,6 +25,13 @@ var (
 
 func client(port uint16) netip.AddrPort { return netip.AddrPortFrom(clientIP, port) }
 
+// File names of the generated captures.
+const (
+	day1File = "tc200_actions_2026-09-14.pcapng"
+	day2File = "tc200_extra_2026-09-15.pcapng"
+	day3File = "tc200_defects.pcap"
+)
+
 // exchange is one request and its response. The Split fields list byte
 // offsets at which the message is cut into separate TCP segments.
 type exchange struct {
@@ -90,7 +97,7 @@ type captureSpec struct {
 // day1 is the main research capture: one action of the client per session.
 func day1() captureSpec {
 	return captureSpec{
-		fileName: "tc200_actions_2026-09-14.pcapng",
+		fileName: day1File,
 		pcapng:   true,
 		start:    day1Start,
 		snapLen:  262144,
@@ -187,7 +194,7 @@ func day1() captureSpec {
 // day2 is an additional recording with new parameter values.
 func day2() captureSpec {
 	return captureSpec{
-		fileName: "tc200_extra_2026-09-15.pcapng",
+		fileName: day2File,
 		pcapng:   true,
 		start:    day2Start,
 		snapLen:  262144,
@@ -237,7 +244,7 @@ func day2() captureSpec {
 // 42 bytes of payload behind the 54 bytes of Ethernet, IPv4 and TCP headers.
 func day3() captureSpec {
 	return captureSpec{
-		fileName: "tc200_defects.pcap",
+		fileName: day3File,
 		start:    day3Start,
 		snapLen:  96,
 		sessions: []sessionSpec{
