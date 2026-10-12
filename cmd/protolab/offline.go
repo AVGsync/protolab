@@ -321,10 +321,16 @@ func short(h string) string {
 	return h
 }
 
-// captureRoots lists directories where "captures/..." paths are resolved.
+// captureRoots lists directories where "captures/..." paths are resolved: the
+// base, else the directory of the examples file and its parents. The directory
+// is made absolute first: for "examples.x.json" run from the report folder it
+// is ".", whose parents would otherwise never be visited.
 func captureRoots(base, examplesDir string) []string {
 	if base != "" {
 		return []string{base}
+	}
+	if abs, err := filepath.Abs(examplesDir); err == nil {
+		examplesDir = abs
 	}
 	roots := []string{examplesDir}
 	d := examplesDir
