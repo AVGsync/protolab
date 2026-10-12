@@ -71,7 +71,7 @@ func (st *stream) frameLengthPrefixed(f *framing) {
 			continue
 		}
 
-		total := f.readLength(st.data[pos+f.lenOffset:]) + f.adjust
+		total := addSat64(f.readLength(st.data[pos+f.lenOffset:]), f.adjust)
 		if total < f.minLen || total > f.maxLen {
 			st.markUnframed(pos, 1)
 			pos++

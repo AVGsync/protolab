@@ -1,5 +1,5 @@
 import { CaretDownIcon } from '@phosphor-icons/react';
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type { ComponentProps, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
 import { cn } from '../lib/cn';
 
 const control =
@@ -33,7 +33,7 @@ export function Textarea({ className, ...rest }: TextareaHTMLAttributes<HTMLText
 }
 
 /** `className` sizes the whole control (e.g. `w-64`); other props go to the native select. */
-export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ className, children, ...rest }: ComponentProps<'select'>) {
   return (
     <span className={cn('relative inline-flex min-w-0', className)}>
       <select className={cn(control, 'h-7 w-full min-w-0 appearance-none pr-6')} {...rest}>

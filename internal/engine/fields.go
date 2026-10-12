@@ -391,6 +391,16 @@ func addSat(a, b int) int {
 	return a + b
 }
 
+func addSat64(a, b int64) int64 {
+	if b > 0 && a > math.MaxInt64-b {
+		return math.MaxInt64
+	}
+	if b < 0 && a < math.MinInt64-b {
+		return math.MinInt64
+	}
+	return a + b
+}
+
 func mulSat(a, b int64) int64 {
 	if a == 0 || b == 0 {
 		return 0
