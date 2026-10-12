@@ -248,7 +248,7 @@ function EditorWorkspace({ projectId, interp, interpretations, version, versions
             <MessageList messages={messages} activeIndex={activeIndex} onSelect={(m) => setActiveIndex(m.index)} />
             {active && (
               <div className="border-t border-line p-3">
-                <FieldTable message={active} onSelectRange={() => undefined} />
+                <FieldTable message={active} selection={null} link={null} onSelectRange={() => undefined} onLink={() => undefined} />
                 <Link
                   to={routes.session(projectId, active.sessionId, {
                     dir: active.direction,

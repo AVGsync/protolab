@@ -30,7 +30,7 @@ export function SessionAnomalySentence({ flags, roles, className }: { flags: Ses
   if (anomalies.length === 0) return null;
   return (
     <Status tone={anomalies[0].tone} className={cn('max-w-full', className)}>
-      <span className="truncate">{describeAnomalies(anomalies)}</span>
+      <span className="min-w-0 truncate">{describeAnomalies(anomalies)}</span>
     </Status>
   );
 }
