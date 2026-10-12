@@ -93,7 +93,8 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
         onMouseEnter={() => onLink({ messageIndex: message.index, path: field.path, range })}
         onMouseLeave={() => onLink(null)}
         className={cn(
-          'cursor-pointer border-b border-line align-top',
+          'cursor-pointer align-top',
+          !field.issue && 'border-b border-line',
           selected ? 'bg-selection' : linked && 'bg-surface-2',
           violation && 'text-danger',
         )}
@@ -121,12 +122,21 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
         <td className="px-2 py-1.5 font-mono whitespace-nowrap text-muted">{field.type}</td>
         <td className="py-1.5 pr-2">
           <span className={cn('font-mono whitespace-nowrap', field.status === 'unknown' && 'text-warn')}>{field.display}</span>
-          {field.issue && <div className="text-[11px] text-danger">{field.issue}</div>}
         </td>
         <td className="py-1.5 pr-4">
           <Meaning field={field} violation={violation} />
         </td>
       </tr>
+      {field.issue && (
+        <tr
+          onClick={() => onSelectRange(range)}
+          className={cn('cursor-pointer border-b border-line text-[11px] text-danger', selected ? 'bg-selection' : linked && 'bg-surface-2')}
+        >
+          <td colSpan={5} className="pr-4 pb-1.5" style={{ paddingLeft: 16 + depth * 12 }}>
+            {field.issue}
+          </td>
+        </tr>
+      )}
       {open &&
         children.map((c) => (
           <FieldRow key={c.path} message={message} field={c} tone={tone} depth={depth + 1} selection={selection} link={link} onSelectRange={onSelectRange} onLink={onLink} />

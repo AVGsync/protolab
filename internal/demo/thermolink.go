@@ -98,8 +98,8 @@ func getMeasurementReq(seq, channel int) []byte {
 
 func getMeasurementResp(seq, channel int, temperature, humidity float64, uptime int) []byte {
 	payload := []byte{byte(channel)}
-	payload = append(payload, u16(jsRound(temperature*10))...)
-	payload = append(payload, u16(jsRound(humidity*10))...)
+	payload = append(payload, u16(tenths(temperature))...)
+	payload = append(payload, u16(tenths(humidity))...)
 	payload = append(payload, u32(uptime)...)
 	return frame(typeMeasure|responseFlag, seq, payload)
 }
@@ -121,9 +121,11 @@ func heartbeat(seq int) []byte { return frame(typeHeartbeat, seq, nil) }
 
 func heartbeatAck(seq int) []byte { return frame(typeHeartbeat|responseFlag, seq, nil) }
 
-// jsRound rounds half up like JavaScript's Math.round, which the frontend
-// fixtures use to encode fixed-point values.
-func jsRound(x float64) int { return int(math.Floor(x + 0.5)) }
+// tenths converts x to fixed point with one decimal digit, rounding half up
+// like JavaScript's Math.round, as the frontend fixtures do. The explicit
+// conversion keeps the compiler from fusing the multiplication with the
+// rounding addition.
+func tenths(x float64) int { return int(math.Floor(float64(x*10) + 0.5)) }
 
 // prng is mulberry32: a tiny deterministic generator, identical to the one
 // the frontend fixtures use.
@@ -149,9 +151,9 @@ func logEntries(count int, seed uint32) []logEntry {
 	ts := 1_726_000_000
 	entries := make([]logEntry, count)
 	for i := range entries {
-		ts += 300 + int(math.Floor(float64(rnd.float()*600)))
-		e := logEntry{ts: ts, code: codes[int(math.Floor(float64(rnd.float()*4)))]}
-		e.value = jsRound(float64(float64(15+float64(rnd.float()*12)) * 10))
+		ts += 300 + int(rnd.float()*600)
+		e := logEntry{ts: ts, code: codes[int(rnd.float()*4)]}
+		e.value = tenths(15 + float64(rnd.float()*12))
 		if rnd.float() > 0.8 {
 			e.flags = 1
 		}

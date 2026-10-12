@@ -130,7 +130,7 @@ export const HexRow = memo(function HexRow(p: HexRowProps) {
 
   return (
     <div
-      className={cn('absolute inset-x-0 flex items-center pl-3 whitespace-pre', first && 'shadow-[inset_0_1px_0_var(--pl-line-strong)]')}
+      className={cn('absolute inset-x-0 flex items-center pl-3 whitespace-pre', first && p.row > 0 && 'shadow-[inset_0_1px_0_var(--pl-line-strong)]')}
       style={{ top: p.top, height: ROW_HEIGHT }}
     >
       <span

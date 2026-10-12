@@ -8,6 +8,7 @@ import {
   EndpointPair,
   SessionAnomalySentence,
   SessionStatusMark,
+  describeAnomalies,
   sessionAnomalies,
   type TcpSession,
 } from '@/entities/session';
@@ -90,7 +91,13 @@ function Anomalies({ session: s }: { session: TcpSession }) {
 
   return (
     <div ref={ref} className="relative min-w-0">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex max-w-full min-w-0 items-center text-muted hover:text-fg">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        title={describeAnomalies(anomalies) || 'Диагностика записи'}
+        className="flex max-w-full min-w-0 items-center text-muted hover:text-fg"
+      >
         {anomalies.length > 0 ? <SessionAnomalySentence flags={s.flags} roles={s.roles} className="text-inherit" /> : <span>диагностика</span>}
       </button>
       {open && (
