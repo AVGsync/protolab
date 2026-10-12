@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 )
 
 // ErrCorrupt is wrapped by errors about structurally impossible content:
@@ -79,6 +80,23 @@ func readRest(r io.Reader, buf []byte) error {
 		return ErrTruncatedFile
 	}
 	return err
+}
+
+// readAnnounced reads n bytes announced by a header into buf, reusing its
+// capacity. It grows the buffer as data arrives, so a damaged length field in a
+// short file costs an ErrTruncatedFile rather than an allocation of n bytes.
+func readAnnounced(r io.Reader, buf []byte, n int) ([]byte, error) {
+	const step = 1 << 20
+	buf = buf[:0]
+	for len(buf) < n {
+		chunk := min(n-len(buf), step)
+		buf = slices.Grow(buf, chunk)
+		if err := readRest(r, buf[len(buf):len(buf)+chunk]); err != nil {
+			return nil, err
+		}
+		buf = buf[:len(buf)+chunk]
+	}
+	return buf, nil
 }
 
 func corrupt(format string, args ...any) error {

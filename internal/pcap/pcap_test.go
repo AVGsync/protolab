@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -242,5 +243,27 @@ func TestWritersRejectTimesOutsideFormat(t *testing.T) {
 	ng, _ := NewNgWriter(&buf, 1, 0)
 	if err := ng.WritePacket(time.Time{}, []byte{1}, 1); err == nil {
 		t.Error("pcapng writer accepted the zero time")
+	}
+}
+
+func TestDamagedLengthDoesNotAllocateAnnouncedSize(t *testing.T) {
+	le := binary.LittleEndian
+	var rec []byte
+	rec = le.AppendUint32(rec, 1)
+	rec = le.AppendUint32(rec, 0)
+	rec = le.AppendUint32(rec, 200<<20) // plausible-looking but damaged
+	rec = le.AppendUint32(rec, 200<<20)
+	rec = append(rec, make([]byte, 100)...)
+	file := classicFile(le, magicMicro, 1, 65535, rec)
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, _, err := readAll(t, file)
+	runtime.ReadMemStats(&after)
+	if !errors.Is(err, ErrTruncatedFile) {
+		t.Fatalf("err = %v", err)
+	}
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 8<<20 {
+		t.Errorf("reader allocated %d bytes for a 100-byte record", grew)
 	}
 }

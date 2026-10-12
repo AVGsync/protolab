@@ -109,13 +109,11 @@ func (ng *ngReader) readBlock() (uint32, []byte, error) {
 	}
 
 	rest := int(total) - 8
-	if cap(ng.buf) < rest {
-		ng.buf = make([]byte, rest)
-	}
-	buf := ng.buf[:rest]
-	if err := readRest(ng.r, buf); err != nil {
+	buf, err := readAnnounced(ng.r, ng.buf, rest)
+	if err != nil {
 		return 0, nil, err
 	}
+	ng.buf = buf
 	if trailer := ng.order.Uint32(buf[rest-4:]); trailer != total {
 		return 0, nil, corrupt("block of type 0x%08x: trailing length %d differs from leading length %d", typ, trailer, total)
 	}
@@ -125,8 +123,11 @@ func (ng *ngReader) readBlock() (uint32, []byte, error) {
 // detectByteOrder peeks at the byte-order magic that follows the SHB length.
 func (ng *ngReader) detectByteOrder() error {
 	m, err := ng.r.Peek(4)
-	if err != nil {
+	if errors.Is(err, io.EOF) {
 		return ErrTruncatedFile
+	}
+	if err != nil {
+		return err
 	}
 	switch {
 	case binary.LittleEndian.Uint32(m) == byteOrderMagic:

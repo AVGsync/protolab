@@ -62,8 +62,8 @@ func (c *classicReader) next() (Packet, error) {
 		return Packet{}, corrupt("record %d: captured length %d is not plausible", c.number+1, capLen)
 	}
 
-	data := make([]byte, capLen)
-	if err := readRest(c.r, data); err != nil {
+	data, err := readAnnounced(c.r, nil, int(capLen))
+	if err != nil {
 		return Packet{}, err
 	}
 	c.number++
