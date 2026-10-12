@@ -1,61 +1,69 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { memo, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import type { StreamSegment } from '@/entities/stream';
-import { cn, formatOffset, formatTimestamp, hexByte, isPrintable, rangeBetween, type ByteRange } from '@/shared/lib';
-
-export interface HexHighlight extends ByteRange {
-  /** Any CSS color; rendered with transparency. */
-  color: string;
-  label?: string;
-}
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import type { Message } from '@/entities/message';
+import type { StreamGap, StreamSegment } from '@/entities/stream';
+import type { Direction } from '@/shared/api';
+import { cn, rangeBetween, rangeEnd, type ByteRange } from '@/shared/lib';
+import { BYTES_PER_ROW } from '../model/row';
+import { buildGapLabels, buildStreamIndex } from '../model/streamIndex';
+import { ASCII_WIDTH, CELL_WIDTH, GROUP_GAP, GUTTER_WIDTH, HexRow, OFFSET_WIDTH, ROW_HEIGHT, ROW_MIN_WIDTH } from './HexRow';
 
 export interface HexViewerProps {
   bytes: Uint8Array;
   /** 1 = unknown byte (capture gap). Rendered as "??", never as a value. */
   unknownMask: Uint8Array;
+  gaps: StreamGap[];
   segments: StreamSegment[];
-  messageStarts?: number[];
-  highlights?: HexHighlight[];
+  /** Messages of this directed stream: their fields are underlined, their boundaries ruled. */
+  messages: Message[];
+  /** Index of the message shown in the lanes; the others are underlined fainter. */
+  activeMessage?: number;
+  /** Search hits: dashed outline. */
+  hits?: ByteRange[];
   selection: ByteRange | null;
+  /** Bytes of the field under the pointer in another pane. */
+  link?: ByteRange | null;
+  /** The byte the pointer is on (or the selection start): outlined in the channel colour. */
+  cursor: number | null;
+  /** Direction of the stream: colours the cursor and the edge stripe. */
+  channel: Direction;
   onSelectionChange: (range: ByteRange | null) => void;
+  onCursorChange: (offset: number | null) => void;
   /** Change `nonce` to scroll to `offset` again. */
   scrollTo?: { offset: number; nonce: number };
-  bytesPerRow?: 8 | 16 | 32;
   className?: string;
 }
 
-const ROW_HEIGHT = 20;
+const NO_HITS: ByteRange[] = [];
 
-interface Lookup {
-  segIndex: Int32Array;
-  msgStart: Uint8Array;
-  hlIndex: Int16Array;
+function clip(range: ByteRange | null | undefined, rowStart: number): [number, number] {
+  if (!range) return [-1, -1];
+  const rowEnd = rowStart + BYTES_PER_ROW;
+  return range.offset < rowEnd && rangeEnd(range) > rowStart ? [Math.max(range.offset, rowStart), Math.min(rangeEnd(range), rowEnd)] : [-1, -1];
 }
 
-function buildLookup(length: number, segments: StreamSegment[], messageStarts: number[], highlights: HexHighlight[]): Lookup {
-  const segIndex = new Int32Array(length).fill(-1);
-  segments.forEach((s, i) => segIndex.fill(i, Math.max(0, s.offset), Math.min(length, s.offset + s.length)));
-  const msgStart = new Uint8Array(length);
-  for (const o of messageStarts) if (o >= 0 && o < length) msgStart[o] = 1;
-  const hlIndex = new Int16Array(length).fill(-1);
-  highlights.forEach((h, i) => hlIndex.fill(i, Math.max(0, h.offset), Math.min(length, h.offset + h.length)));
-  return { segIndex, msgStart, hlIndex };
-}
-
+/**
+ * Virtualized hex view of a directed stream: 16 bytes per row in 8+8 columns, fields as underlines,
+ * message boundaries as rules, capture gaps as hatching. Selection by drag or Shift+click.
+ */
 export function HexViewer({
   bytes,
   unknownMask,
+  gaps,
   segments,
-  messageStarts = [],
-  highlights = [],
+  messages,
+  activeMessage = -1,
+  hits = NO_HITS,
   selection,
+  link,
+  cursor,
+  channel,
   onSelectionChange,
+  onCursorChange,
   scrollTo,
-  bytesPerRow = 16,
   className,
 }: HexViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<number | null>(null);
   const [draft, setDraftState] = useState<ByteRange | null>(null);
   const draftRef = useRef<ByteRange | null>(null);
   const anchor = useRef<number | null>(null);
@@ -64,12 +72,10 @@ export function HexViewer({
     setDraftState(range);
   };
 
-  const lookup = useMemo(
-    () => buildLookup(bytes.length, segments, messageStarts, highlights),
-    [bytes.length, segments, messageStarts, highlights],
-  );
+  const index = useMemo(() => buildStreamIndex(bytes.length, segments, hits), [bytes.length, segments, hits]);
+  const gapLabels = useMemo(() => buildGapLabels(gaps), [gaps]);
 
-  const rows = Math.ceil(bytes.length / bytesPerRow);
+  const rows = Math.ceil(bytes.length / BYTES_PER_ROW);
   const virtualizer = useVirtualizer({
     count: rows,
     getScrollElement: () => scrollRef.current,
@@ -79,7 +85,7 @@ export function HexViewer({
 
   useEffect(() => {
     if (scrollTo && rows > 0) {
-      virtualizer.scrollToIndex(Math.min(rows - 1, Math.floor(scrollTo.offset / bytesPerRow)), { align: 'center' });
+      virtualizer.scrollToIndex(Math.min(rows - 1, Math.floor(scrollTo.offset / BYTES_PER_ROW)), { align: 'center' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- scroll only when a new target is requested
   }, [scrollTo?.nonce]);
@@ -115,138 +121,97 @@ export function HexViewer({
     setDraft({ offset: o, length: 1 });
   };
 
+  const lastCursor = useRef<number | null>(null);
   const onMouseMove = (e: MouseEvent) => {
     const o = offsetFromEvent(e);
     if (o === null) return;
-    setHover(o);
+    if (o !== lastCursor.current) {
+      lastCursor.current = o;
+      onCursorChange(o);
+    }
     if (anchor.current !== null) setDraft(rangeBetween(anchor.current, o));
   };
 
-  const active = draft ?? selection;
-  const hoverSeg = hover !== null ? segments[lookup.segIndex[hover]] : undefined;
+  const shown = draft ?? selection;
+  const dimUncovered = messages.length > 0;
 
   return (
-    <div className={cn('flex min-h-0 flex-col bg-bg', className)}>
+    <div className={cn('relative flex min-h-0 flex-col overflow-x-auto bg-bg', className)}>
       <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-auto font-mono text-[12px] leading-5 select-none"
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseLeave={() => setHover(null)}
-      >
-        {bytes.length === 0 ? (
-          <p className="p-6 font-sans text-muted">Поток пуст — в этом направлении данных нет.</p>
-        ) : (
-          <div style={{ height: virtualizer.getTotalSize(), position: 'relative', minWidth: 'max-content' }}>
-            {virtualizer.getVirtualItems().map((v) => (
-              <HexRow
-                key={v.key}
-                row={v.index}
-                top={v.start}
-                bytes={bytes}
-                bytesPerRow={bytesPerRow}
-                unknown={unknownMask}
-                lookup={lookup}
-                highlights={highlights}
-                selection={active}
-                hover={hover}
-              />
-            ))}
+        aria-hidden
+        className={cn('pointer-events-none absolute inset-y-0 left-0 z-10 w-0.5', channel === 'c2s' ? 'bg-ch-c2s' : 'bg-ch-s2c')}
+      />
+      {bytes.length === 0 ? (
+        <p className="px-6 py-10 text-center text-muted">В этом направлении данных нет.</p>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col" style={{ minWidth: ROW_MIN_WIDTH }}>
+          <HexHeader />
+          <div
+            ref={scrollRef}
+            className="min-h-0 flex-1 overflow-y-auto font-mono text-[12.5px] select-none"
+            onMouseDown={onMouseDown}
+            onMouseMove={onMouseMove}
+            onMouseLeave={() => {
+              lastCursor.current = null;
+              onCursorChange(null);
+            }}
+          >
+            <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((v) => {
+                const rowStart = v.index * BYTES_PER_ROW;
+                const [selFrom, selTo] = clip(shown, rowStart);
+                const [linkFrom, linkTo] = clip(link, rowStart);
+                return (
+                  <HexRow
+                    key={v.key}
+                    row={v.index}
+                    top={v.start}
+                    bytes={bytes}
+                    unknown={unknownMask}
+                    messages={messages}
+                    index={index}
+                    gapLabels={gapLabels.get(v.index)}
+                    dimUncovered={dimUncovered}
+                    activeMessage={activeMessage}
+                    selFrom={selFrom}
+                    selTo={selTo}
+                    linkFrom={linkFrom}
+                    linkTo={linkTo}
+                    cursor={cursor !== null && cursor >= rowStart && cursor < rowStart + BYTES_PER_ROW ? cursor : -1}
+                    channel={channel}
+                  />
+                );
+              })}
+            </div>
           </div>
-        )}
-      </div>
-      <div className="flex h-7 shrink-0 items-center gap-4 border-t border-line bg-surface px-3 font-mono text-[11px] text-muted">
-        {hover !== null ? (
-          <>
-            <span>
-              <span className="text-subtle">offset</span> {formatOffset(hover)} ({hover})
-            </span>
-            <span>
-              <span className="text-subtle">byte</span>{' '}
-              {unknownMask[hover] ? <span className="text-danger">?? неизвестен</span> : `0x${hexByte(bytes[hover])} = ${bytes[hover]}`}
-            </span>
-            {hoverSeg && (
-              <span>
-                <span className="text-subtle">пакет</span> #{hoverSeg.packetNumber} · {formatTimestamp(hoverSeg.timestamp)}
-                {hoverSeg.flags.length > 0 && <span className="text-warn"> · {hoverSeg.flags.join(', ')}</span>}
-              </span>
-            )}
-            {lookup.hlIndex[hover] >= 0 && highlights[lookup.hlIndex[hover]].label && (
-              <span className="text-fg">{highlights[lookup.hlIndex[hover]].label}</span>
-            )}
-          </>
-        ) : (
-          <span>
-            {bytes.length} Б · выделение: перетаскивание или Shift+клик
-          </span>
-        )}
-        {active && (
-          <span className="ml-auto text-fg">
-            выделено {formatOffset(active.offset)}+{active.length}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-interface HexRowProps {
-  row: number;
-  top: number;
-  bytes: Uint8Array;
-  bytesPerRow: number;
-  unknown: Uint8Array;
-  lookup: Lookup;
-  highlights: HexHighlight[];
-  selection: ByteRange | null;
-  hover: number | null;
-}
+const COLUMNS = Array.from({ length: BYTES_PER_ROW }, (_, k) => k);
 
-const HexRow = memo(function HexRow({ row, top, bytes, bytesPerRow, unknown, lookup, highlights, selection, hover }: HexRowProps) {
-  const start = row * bytesPerRow;
-  const end = Math.min(bytes.length, start + bytesPerRow);
-  const hexCells = [];
-  const asciiCells = [];
-
-  for (let o = start; o < start + bytesPerRow; o++) {
-    if (o >= end) {
-      hexCells.push(<span key={o} className="inline-block w-[22px]" />);
-      asciiCells.push(<span key={o} className="inline-block w-[8px]" />);
-      continue;
-    }
-    const isUnknown = unknown[o] === 1;
-    const selected = selection !== null && o >= selection.offset && o < selection.offset + selection.length;
-    const hl = lookup.hlIndex[o];
-    const seg = lookup.segIndex[o];
-    const style = !selected && hl >= 0 ? { backgroundColor: `color-mix(in srgb, ${highlights[hl].color} 32%, transparent)` } : undefined;
-    const cls = cn(
-      'inline-block cursor-text text-center',
-      seg >= 0 && seg % 2 === 1 && 'bg-surface-2',
-      seg < 0 && !isUnknown && 'text-subtle',
-      isUnknown && 'bg-hatch text-danger/80',
-      lookup.msgStart[o] === 1 && 'shadow-[inset_2px_0_0_var(--color-line-strong)]',
-      selected && 'bg-selection text-fg',
-      hover === o && 'outline outline-1 -outline-offset-1 outline-glow',
-    );
-    const gapAfter = (o - start) % 8 === 7 && o - start < bytesPerRow - 1;
-    hexCells.push(
-      <span key={o} data-o={o} className={cn(cls, 'w-[22px]', gapAfter && 'mr-2')} style={style}>
-        {isUnknown ? '??' : hexByte(bytes[o])}
-      </span>,
-    );
-    const b = bytes[o];
-    asciiCells.push(
-      <span key={o} data-o={o} className={cn(cls, 'w-[8px]', !isUnknown && !isPrintable(b) && 'text-subtle')} style={style}>
-        {isUnknown ? '·' : isPrintable(b) ? String.fromCharCode(b) : '.'}
-      </span>,
-    );
-  }
-
+function HexHeader() {
   return (
-    <div className="absolute left-0 flex h-5 items-center whitespace-pre" style={{ top }}>
-      <span className="w-[76px] shrink-0 pl-3 text-subtle">{start.toString(16).toUpperCase().padStart(6, '0')}</span>
-      <span className="pr-4">{hexCells}</span>
-      <span className="border-l border-line pr-4 pl-3">{asciiCells}</span>
+    <div
+      className="flex shrink-0 items-center border-b border-line pl-3 font-mono text-[11px] whitespace-pre text-muted"
+      style={{ height: ROW_HEIGHT }}
+    >
+      <span className="shrink-0" style={{ width: GUTTER_WIDTH }} />
+      <span className="shrink-0" style={{ width: OFFSET_WIDTH }}>
+        смещ.
+      </span>
+      <span className="shrink-0">
+        {COLUMNS.map((k) => (
+          <span key={k} className="inline-block text-center" style={{ width: CELL_WIDTH, marginLeft: k === 8 ? GROUP_GAP : 0 }}>
+            {k.toString(16).toUpperCase()}
+          </span>
+        ))}
+      </span>
+      <span className="ml-4 shrink-0" style={{ width: BYTES_PER_ROW * ASCII_WIDTH }}>
+        ASCII
+      </span>
     </div>
   );
-});
+}
