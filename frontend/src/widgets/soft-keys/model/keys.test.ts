@@ -25,7 +25,16 @@ describe('matchesKey', () => {
 });
 
 describe('isTypingTarget', () => {
-  it('is false for non-elements', () => {
+  const el = (init: Record<string, unknown>) => init as unknown as EventTarget;
+
+  it('is true for text controls and editable content', () => {
+    expect(isTypingTarget(el({ tagName: 'INPUT' }))).toBe(true);
+    expect(isTypingTarget(el({ tagName: 'TEXTAREA' }))).toBe(true);
+    expect(isTypingTarget(el({ tagName: 'DIV', isContentEditable: true }))).toBe(true);
+  });
+
+  it('is false for everything else', () => {
     expect(isTypingTarget(null)).toBe(false);
+    expect(isTypingTarget(el({ tagName: 'BUTTON' }))).toBe(false);
   });
 });

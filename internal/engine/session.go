@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"slices"
 	"sort"
 	"strings"
 
@@ -16,7 +17,7 @@ func parseSession(s *spec.Spec, in SessionInput) ParsedSession {
 	out := ParsedSession{Messages: make([]model.Message, len(sess.order)), Unframed: sess.unframed}
 	for i, ref := range sess.order {
 		st, f := sess.frame(ref)
-		out.Messages[i] = b.message(st, f)
+		b.build(&out.Messages[i], st, f)
 		out.Messages[i].Index = i
 	}
 	return out
@@ -133,38 +134,46 @@ type builder struct {
 	// messages, so a message is valid only until the next one is built.
 	lean       bool
 	unknownBuf []model.ByteRange
+
+	ruleIDs []*string // Message.RuleID of each rule, shared by its messages
+	ints    []int     // chunk that packet number lists are carved from
 }
 
 func (c *compiled) newBuilder(in *SessionInput, lean bool) *builder {
-	return &builder{
+	b := &builder{
 		c:         c,
 		sessionID: in.Session.ID,
 		bound:     c.bindAssertions(in.Actions),
 		parser:    fieldParser{lean: lean},
 		lean:      lean,
+		ruleIDs:   make([]*string, len(c.rules)),
 	}
+	for i := range c.rules {
+		id := c.rules[i].id
+		b.ruleIDs[i] = &id
+	}
+	return b
 }
 
-func (b *builder) message(st *stream, f *frame) model.Message {
+// build fills m, which must be zero, with the message cut out by f.
+// Messages are large, so they are written in place rather than returned.
+func (b *builder) build(m *model.Message, st *stream, f *frame) {
 	end := f.offset + f.length
 	data := st.data[f.offset:end:end]
 	unknown := st.unknownSlice(f.offset, end)
 
-	m := model.Message{
-		SessionID: b.sessionID,
-		Direction: st.dir,
-		Offset:    f.offset,
-		Length:    f.length,
-		Timestamp: st.timestampOf(f),
-		Issues:    []string{},
-		Fields:    []model.ParsedField{},
-		Data:      data,
-	}
+	m.SessionID = b.sessionID
+	m.Direction = st.dir
+	m.Offset, m.Length = f.offset, f.length
+	m.Timestamp = st.timestampOf(f)
+	m.Issues = []string{}
+	m.Fields = []model.ParsedField{}
+	m.Data = data
 	if issues := st.issuesOf(f); len(issues) > 0 {
 		m.Issues = append(make([]string, 0, len(issues)+1), issues...)
 	}
 	if !b.lean {
-		m.PacketNumbers = st.segs.packets(f.offset, f.length)
+		m.PacketNumbers = b.packets(st, f)
 	}
 
 	b.parser.reset(data, unknown)
@@ -176,16 +185,16 @@ func (b *builder) message(st *stream, f *frame) model.Message {
 		if b.bound != nil {
 			bound = b.bound[b.matched[0]]
 		}
-		m.RuleID, m.RuleTitle = b.ruleID(r), r.title
+		m.RuleID, m.RuleTitle = b.ruleIDs[b.matched[0]], r.title
 		b.parser.keepValues = !b.lean || len(bound) > 0
 		m.Fields = b.parser.parse(r.fields, 0, "")
-		applyAssertions(&m, r, bound)
+		applyAssertions(m, r, bound)
 	}
+	b.unknownBuf = appendUncovered(b.unknownBuf[:0], b.parser.covered)
 	if b.lean {
-		b.unknownBuf = appendUncovered(b.unknownBuf[:0], b.parser.covered)
 		m.Unknown = b.unknownBuf
 	} else {
-		m.Unknown = appendUncovered([]model.ByteRange{}, b.parser.covered)
+		m.Unknown = append([]model.ByteRange{}, b.unknownBuf...)
 	}
 
 	if len(b.matched) > 1 {
@@ -208,17 +217,28 @@ func (b *builder) message(st *stream, f *frame) model.Message {
 	default:
 		m.Status = model.MsgOK
 	}
-	return m
 }
 
-// ruleID returns a pointer for Message.RuleID. Messages handed to callers get
-// their own copy so that they never alias each other or the compiled spec.
-func (b *builder) ruleID(r *rule) *string {
-	if b.lean {
-		return &r.id
+// packets lists the packets of a message. Lists are carved out of shared
+// chunks: most messages span one or two packets, and allocating each list
+// separately would dominate the cost of large sessions.
+func (b *builder) packets(st *stream, f *frame) []int {
+	lo, hi := st.segs.overlapping(f.offset, f.offset+f.length)
+	if lo == hi {
+		return []int{}
 	}
-	id := r.id
-	return &id
+	if len(b.ints)+hi-lo > cap(b.ints) {
+		b.ints = make([]int, 0, max(hi-lo, 4096))
+	}
+	start := len(b.ints)
+	for _, i := range st.segs.order[lo:hi] {
+		if s := st.segs.segs[i]; s.Offset+s.Length > f.offset {
+			b.ints = append(b.ints, s.PacketNumber)
+		}
+	}
+	out := b.ints[start:len(b.ints):len(b.ints)]
+	slices.Sort(out)
+	return out
 }
 
 // matchRules appends the indices of all rules matching a message. Gap bytes

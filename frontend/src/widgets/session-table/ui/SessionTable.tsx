@@ -38,8 +38,8 @@ export function SessionTable({ sessions, actions = [], onOpen }: SessionTablePro
                 {s.id}
                 {!s.isTarget && <Tag title="Сессия не на целевом порту проекта">фон</Tag>}
               </span>
-              <div className="text-[11px] text-subtle">
-                {s.capture.fileName} · tcp.stream {s.index}
+              <div className="max-w-52 truncate font-mono text-[11px] text-subtle" title={s.capture.fileName}>
+                tcp.stream {s.index}, {s.capture.fileName}
               </div>
             </Td>
             <Td>
@@ -48,7 +48,7 @@ export function SessionTable({ sessions, actions = [], onOpen }: SessionTablePro
             <Td className="font-mono text-xs whitespace-nowrap text-muted">
               {s.startedAt.slice(0, 10)} {formatTimestamp(s.startedAt, 3)}
             </Td>
-            <Td className="text-right font-mono text-xs text-muted">{formatDuration(diffMs(s.startedAt, s.endedAt))}</Td>
+            <Td className="text-right font-mono text-xs whitespace-nowrap text-muted">{formatDuration(diffMs(s.startedAt, s.endedAt))}</Td>
             <Td className="text-right font-mono text-xs">{s.packetCount}</Td>
             <Td className="text-right font-mono text-xs whitespace-nowrap">
               <span className="text-ch-c2s">{formatBytes(s.bytes.c2s)}</span> / <span className="text-ch-s2c">{formatBytes(s.bytes.s2c)}</span>

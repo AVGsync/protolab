@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"math"
 	"strconv"
 	"strings"
@@ -55,41 +56,52 @@ func roundFixed(v float64, decimals int) float64 {
 	return math.Copysign(r, v)
 }
 
-// formatScaled returns jsNumber(roundFixed(v, decimals)) without the
+// formatScaled returns jsNumber(roundFixed(v, decimals)).
+func formatScaled(v float64, decimals int) string {
+	var buf [32]byte
+	return string(appendScaled(buf[:0], v, decimals))
+}
+
+// appendScaled appends jsNumber(roundFixed(v, decimals)) to dst without the
 // round trip through float64 in the common case: when the toFixed digits have
 // at most 15 significant digits they convert to a double and back unchanged,
 // so trimming their trailing zeros already yields the shortest form.
-func formatScaled(v float64, decimals int) string {
+func appendScaled(dst []byte, v float64, decimals int) []byte {
 	a := math.Abs(v)
 	if math.IsNaN(v) || a >= 1e21 {
-		return jsNumber(roundFixed(v, decimals))
+		return append(dst, jsNumber(roundFixed(v, decimals))...)
 	}
 	if isTie(a, decimals) {
 		a = math.Nextafter(a, math.Inf(1))
 	}
-	s := strconv.FormatFloat(a, 'f', decimals, 64)
-	if strings.IndexByte(s, '.') >= 0 {
-		s = strings.TrimSuffix(strings.TrimRight(s, "0"), ".")
-	}
-	if s == "0" {
-		return "0"
-	}
-	intPart, frac, _ := strings.Cut(s, ".")
-	digits := len(intPart) + len(frac)
-	if intPart == "0" {
-		significant := strings.TrimLeft(frac, "0")
-		if len(frac)-len(significant) >= 6 {
-			return jsNumber(roundFixed(v, decimals)) // below 1e-6: exponent notation
-		}
-		digits = len(significant)
-	}
-	if digits > 15 {
-		return jsNumber(roundFixed(v, decimals))
-	}
+	start := len(dst)
 	if v < 0 {
-		return "-" + s
+		dst = append(dst, '-')
 	}
-	return s
+	digitsStart := len(dst)
+	dst = strconv.AppendFloat(dst, a, 'f', decimals, 64)
+	if bytes.IndexByte(dst[digitsStart:], '.') >= 0 {
+		dst = bytes.TrimRight(dst, "0")
+		dst = bytes.TrimSuffix(dst, []byte("."))
+	}
+	num := dst[digitsStart:]
+	if len(num) == 1 && num[0] == '0' {
+		return append(dst[:start], '0') // also -0
+	}
+	intPart, frac, _ := bytes.Cut(num, []byte("."))
+	significant := len(intPart) + len(frac)
+	if len(intPart) == 1 && intPart[0] == '0' {
+		fracDigits := bytes.TrimLeft(frac, "0")
+		if len(frac)-len(fracDigits) >= 6 {
+			significant = math.MaxInt // below 1e-6: exponent notation
+		} else {
+			significant = len(fracDigits)
+		}
+	}
+	if significant > 15 {
+		return append(dst[:start], jsNumber(roundFixed(v, decimals))...)
+	}
+	return dst
 }
 
 // isTie reports whether a*10^d lies exactly halfway between two integers, i.e.

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"math"
+	"math/rand/v2"
 	"testing"
 )
 
@@ -54,6 +55,37 @@ func TestRoundFixed(t *testing.T) {
 	for _, tt := range tests {
 		if got := roundFixed(tt.v, tt.decimals); got != tt.want {
 			t.Errorf("roundFixed(%v, %d) = %v, want %v", tt.v, tt.decimals, got, tt.want)
+		}
+	}
+}
+
+// formatScaled takes a shortcut around jsNumber(roundFixed(...)); both must
+// agree everywhere, ties and notation boundaries included.
+func TestFormatScaledMatchesSlowPath(t *testing.T) {
+	scales := []float64{0.1, 0.25, 0.5, 0.01, 0.001, 0.125, 0.0625, 1e-7, 1e-9, 2.5e-3, 3, 1e15, 1e6, -0.5, 0.15, 0.3}
+	r := rand.New(rand.NewPCG(1, 2))
+	check := func(v float64, d int) {
+		if got, want := formatScaled(v, d), jsNumber(roundFixed(v, d)); got != want {
+			t.Fatalf("formatScaled(%v, %d) = %q, want %q", v, d, got, want)
+		}
+	}
+	for range 200000 {
+		scale := scales[r.IntN(len(scales))]
+		var raw int64
+		switch r.IntN(3) {
+		case 0:
+			raw = int64(r.IntN(512)) - 256
+		case 1:
+			raw = int64(r.Int32()) - int64(r.Int32())
+		default:
+			raw = int64(r.Uint32())
+		}
+		check(float64(raw)*scale, scaleDecimals(scale))
+	}
+	for _, v := range []float64{0, 1e-6, 9.99e-7, 1e21, 999999999999999, 1e15, 123456789012345.6, 0.5, -0.5, 2.5, 1e-100} {
+		for d := 0; d <= 20; d++ {
+			check(v, d)
+			check(-v, d)
 		}
 	}
 }

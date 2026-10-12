@@ -29,8 +29,10 @@ type fieldParser struct {
 	values []int64
 	isSet  []bool
 
-	// lean skips display texts and takes field slices from arena, which is
-	// recycled for every message (see builder.lean).
+	// Field slices are carved out of arena instead of being allocated one by
+	// one. In lean mode (see builder.lean) the arena is recycled for every
+	// message and display texts are skipped; otherwise each chunk is handed
+	// out once and stays owned by the messages that use it.
 	lean  bool
 	arena []model.ParsedField
 	// keepValues stores integer values in ParsedField.Value. Only assertions
@@ -47,7 +49,9 @@ func (p *fieldParser) reset(msg, unknown []byte) {
 		clear(p.covered)
 	}
 	p.values, p.isSet = p.values[:0], p.isSet[:0]
-	p.arena = p.arena[:0]
+	if p.lean {
+		p.arena = p.arena[:0]
+	}
 	p.keepValues = true
 }
 
@@ -68,18 +72,30 @@ func (p *fieldParser) parse(fields []field, base int, prefix string) []model.Par
 	return out
 }
 
+// arenaChunk is the number of fields allocated at once for messages that are
+// returned to the caller.
+const arenaChunk = 4096
+
 func (p *fieldParser) fieldSlice(n int) []model.ParsedField {
-	if !p.lean {
-		return make([]model.ParsedField, n)
+	if n == 0 {
+		return []model.ParsedField{}
 	}
 	if len(p.arena)+n > cap(p.arena) {
-		// Slices handed out earlier keep the old array alive until the
-		// message is dropped; the next message starts on the larger one.
-		p.arena = make([]model.ParsedField, 0, max(2*cap(p.arena), n, 64))
+		// Slices handed out earlier keep their chunk alive; the rest of
+		// this message continues in a fresh one.
+		size := max(n, arenaChunk)
+		if p.lean {
+			size = max(n, 2*cap(p.arena), 64)
+		}
+		p.arena = make([]model.ParsedField, 0, size)
 	}
 	start := len(p.arena)
 	p.arena = p.arena[:start+n]
-	return p.arena[start : start+n : start+n]
+	out := p.arena[start : start+n : start+n]
+	if p.lean {
+		clear(out) // recycled memory
+	}
+	return out
 }
 
 func (p *fieldParser) parseField(pf *model.ParsedField, f *field, base int, prefix string, top, slot int) {
@@ -89,17 +105,14 @@ func (p *fieldParser) parseField(pf *model.ParsedField, f *field, base int, pref
 		offset = len(p.msg) + src.Offset
 	}
 	length := p.sizeOf(f, top)
-	*pf = model.ParsedField{
-		Path:          prefix + src.Name,
-		Name:          src.Name,
-		Offset:        offset,
-		Length:        clampInt(length),
-		Type:          f.typeName,
-		Status:        model.FieldOK,
-		Meaning:       src.Meaning,
-		MeaningStatus: f.meaningStatus,
-		HypothesisID:  src.Hypothesis,
-	}
+	// pf is zeroed memory; setting fields one by one avoids building a
+	// temporary struct and copying it.
+	pf.Path = prefix + src.Name
+	pf.Name = src.Name
+	pf.Offset, pf.Length = offset, clampInt(length)
+	pf.Type = f.typeName
+	pf.Status = model.FieldOK
+	pf.Meaning, pf.MeaningStatus, pf.HypothesisID = src.Meaning, f.meaningStatus, src.Hypothesis
 
 	if f.kind == kindInvalid {
 		pf.Length, pf.Display = 0, "—"
@@ -194,14 +207,9 @@ func (p *fieldParser) parseArray(pf *model.ParsedField, f *field, top int) {
 		itemBase := pf.Offset + i*itemSize
 		name := "[" + strconv.Itoa(i) + "]"
 		item := &pf.Children[i]
-		*item = model.ParsedField{
-			Path:   pf.Path + name,
-			Name:   name,
-			Offset: itemBase,
-			Length: itemSize,
-			Type:   "struct",
-			Status: model.FieldOK,
-		}
+		item.Path, item.Name = pf.Path+name, name
+		item.Offset, item.Length = itemBase, itemSize
+		item.Type, item.Status = "struct", model.FieldOK
 		item.Children = p.parse(f.items, itemBase, item.Path+".")
 		if hasViolation(item.Children) {
 			item.Status = model.FieldViolation
@@ -237,21 +245,32 @@ func (p *fieldParser) describeInt(pf *model.ParsedField, f *field, v int64, offs
 // intDisplay renders an integer the way the researcher reads it: an enum
 // label with the raw value, or the scaled value with its unit.
 func intDisplay(f *field, v int64, label string, inEnum bool) string {
-	raw := strconv.FormatInt(v, 10)
-	if f.hasEnum {
+	src := f.src
+	if !f.hasEnum && src.Scale == 0 && src.Unit == "" {
+		return strconv.FormatInt(v, 10)
+	}
+	var buf [64]byte
+	b := buf[:0]
+	switch {
+	case f.hasEnum:
 		if !inEnum {
 			label = "?"
 		}
-		return label + " (" + raw + ")"
+		b = append(b, label...)
+		b = append(b, " ("...)
+		b = strconv.AppendInt(b, v, 10)
+		b = append(b, ')')
+		return string(b)
+	case src.Scale != 0:
+		b = appendScaled(b, float64(v)*src.Scale, f.decimals)
+	default:
+		b = strconv.AppendInt(b, v, 10)
 	}
-	s := raw
-	if f.src.Scale != 0 {
-		s = formatScaled(float64(v)*f.src.Scale, f.decimals)
+	if src.Unit != "" {
+		b = append(b, ' ')
+		b = append(b, src.Unit...)
 	}
-	if f.src.Unit != "" {
-		s += " " + f.src.Unit
-	}
-	return s
+	return string(b)
 }
 
 // expectIssue checks the raw value; the first failing condition is reported.

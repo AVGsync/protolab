@@ -177,6 +177,14 @@
   pre,
   samp {
     font-family: var(--font-mono);
+  }
+
+  /* Hex, offsets and values must never turn into ligatures. */
+  code,
+  kbd,
+  pre,
+  samp,
+  .font-mono {
     font-variant-ligatures: none;
   }
 
@@ -229,19 +237,6 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-size: 160px 160px;
   }
-}
-
-/* The brand gradient is allowed in the logo mark and as the heat data scale only. */
-@utility bg-heat-scale {
-  background-image: linear-gradient(
-    to right,
-    var(--color-heat-0),
-    var(--color-heat-1),
-    var(--color-heat-2),
-    var(--color-heat-3),
-    var(--color-heat-4),
-    var(--color-heat-5)
-  );
 }
 
 /* Text link: the same colour as text, a quiet underline that sharpens on hover. */

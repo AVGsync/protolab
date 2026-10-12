@@ -130,7 +130,7 @@ export function RunDetailsPage() {
             {r.summary.inapplicableRules.length ? ` (${r.summary.inapplicableRules.join(', ')})` : ''} на этом корпусе не проверены.
           </Note>
 
-          <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_340px]">
+          <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
             <Pane className="min-w-0">
               <Tabs<FindingKind | 'all'>
                 value={kind}

@@ -22,6 +22,7 @@ export function matchesKey(e: KeyboardEvent, key: string): boolean {
 
 /** Hotkeys must not fire while the user types. */
 export function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+  const el = target as Partial<HTMLElement> | null;
+  if (!el || typeof el.tagName !== 'string') return false;
+  return !!el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName);
 }

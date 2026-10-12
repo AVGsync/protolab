@@ -99,12 +99,14 @@ func (c *compiled) verifySession(ctx context.Context, in *SessionInput) (t *tall
 	}
 
 	b := c.newBuilder(in, true)
+	var m model.Message
 	for i, ref := range sess.order {
 		if i&0xfff == 0xfff && ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		st, f := sess.frame(ref)
-		m := b.message(st, f)
+		m = model.Message{}
+		b.build(&m, st, f)
 		t.message(c, sess, st, &m)
 	}
 	return t, nil
