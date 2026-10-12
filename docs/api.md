@@ -12,8 +12,8 @@ mock-обработчиках `frontend/src/mocks/handlers/*` для разра�
 |---|---|
 | Базовый путь | `/api/v1`. Фронтенд и API отдаются одним бинарём с одного origin (по умолчанию `http://127.0.0.1:7420`); в dev Vite проксирует `/api` на `127.0.0.1:7420` |
 | Формат | `application/json`, поля в `camelCase` |
-| Время | RFC 3339 в UTC с наносекундами (`time.RFC3339Nano`), например `2026-09-14T10:00:05.000310Z`. Фронтенд берёт доли секунды прямо из строки — не округляйте до миллисекунд |
-| Идентификаторы | непрозрачные строки (`prj-…`, `cap-…`, `ses-…`); фронтенд не разбирает их |
+| Время | RFC 3339 в UTC. Метки пакетов, сегментов и сообщений — всегда 9 знаков долей секунды (`model.PacketTime`), например `2026-09-14T10:00:05.000310000Z`; времена объектов (`createdAt`, `startedAt`…) — 3 знака (`model.Now`). Фронтенд берёт доли секунды прямо из строки — не округляйте до миллисекунд |
+| Идентификаторы | непрозрачные строки (`prj-…`, `cap-…`, `run-…`; сессия — `<captureId>-<номер>`, например `cap-…-003`); фронтенд не разбирает их |
 | Списки | `{"items": [...], "total": N}` |
 | Ошибки | HTTP-статус + `{"error": {"code": "snake_case", "message": "текст для человека", "details": <any>}}` |
 | Долгие операции | `202 Accepted` + `jobId`; прогресс — `GET /jobs/{id}` (фронтенд опрашивает раз в ~0,7 с, пока есть активные задачи) |
@@ -21,15 +21,22 @@ mock-обработчиках `frontend/src/mocks/handlers/*` для разра�
 | Скачивание файлов | обычный `GET` с `Content-Disposition: attachment; filename="..."` |
 
 Коды ошибок, которые фронтенд отображает осмысленно: `validation_error` (422), `invalid_spec` (422, `details` — `SpecIssue[]`),
-`unsupported_format` (422), `invalid_action_log` (422), `message_limit` (422), `capture_too_large` (413),
-`duplicate_capture` (409), `no_changes` (409), `not_cancellable` (409), `source_mismatch` (409), `not_found` (404).
-Клиент не повторяет запросы при 4xx.
+`unsupported_format` (422), `invalid_action_log` (422), `invalid_archive` (422), `message_limit` (422),
+`capture_too_large` (413), `archive_too_large` (413), `action_log_too_large` (413), `duplicate_capture` (409),
+`no_changes` (409), `not_cancellable` (409), `not_ready` (409), `source_mismatch` (409), `not_found` (404). Прочие:
+`bad_request` (400), `forbidden_host`/`cross_site` (403), `unsupported_media_type` (415), `too_large` (413),
+`internal` (500). Клиент не повторяет запросы при 4xx.
 
-Защита локального сервера (`internal/server/server.go`): запросы с `Host`, отличным от loopback
-(`127.0.0.1`, `localhost`, `[::1]`), отклоняются `403` — это закрывает DNS rebinding. Изменяющие запросы
-(`POST/PATCH/DELETE`) с `Sec-Fetch-Site: cross-site` или с `Origin` чужого сайта отклоняются `403` —
-это закрывает CSRF из браузера. Если сервер явно запущен на не-loopback адресе (`--addr 0.0.0.0:7420`),
-проверка `Host` отключается, о чём пишется предупреждение в журнал.
+JSON-тело запроса должно идти с `Content-Type: application/json` (или `*+json`), иначе `415 unsupported_media_type`;
+размер JSON-тела — не больше 8 МиБ.
+
+Защита локального сервера (`internal/server/server.go`): запросы с `Host`, отличным от `localhost` и loopback-IP
+(`127.0.0.0/8`, `[::1]`), отклоняются `403 forbidden_host` — это закрывает DNS rebinding. Изменяющие запросы
+(все методы, кроме `GET/HEAD/OPTIONS`) с `Sec-Fetch-Site: cross-site` или `same-site` (страница на другом порту
+того же хоста) или с не-loopback `Origin` отклоняются `403 cross_site`; вместе с требованием JSON-типа это закрывает
+CSRF из браузера. Интерфейс (и прокси Vite в разработке) шлёт `same-origin`. Если сервер явно запущен на не-loopback
+адресе (`--addr 0.0.0.0:7420`), проверка `Host` отключается, `Origin` должен совпадать с `Host`, в журнал пишется
+предупреждение.
 
 ## Эндпоинты
 
@@ -67,8 +74,11 @@ mock-обработчиках `frontend/src/mocks/handlers/*` для разра�
 
 | Метод и путь | Параметры | Ответ |
 |---|---|---|
-| `GET /sessions/{sessionId}/messages` | `versionId` (обязательно) | `ListResponse<Message>` — оба направления, по времени |
-| `GET /projects/{projectId}/messages` | `versionId`, `ruleId?`, `direction?`, `sessionIds?` (через запятую) | `ListResponse<Message>` по целевым сессиям — для сравнения примеров |
+| `GET /sessions/{sessionId}/messages` | `versionId` (обязательно) | `ListResponse<Message>` — оба направления, по времени; `422 message_limit`, если в сессии больше `SystemInfo.limits.maxMessages` сообщений |
+| `GET /projects/{projectId}/messages` | `versionId`, `ruleId?`, `direction?`, `sessionIds?` (через запятую) | `ListResponse<Message>` по целевым сессиям — для сравнения примеров; `422 message_limit`, если в одной сессии или в ответе больше `maxMessages` |
+
+Предел проверяется при кадрировании, до разбора полей: сессия, нарезанная на слишком много кадров, не разбирается
+вовсе. То же действует для `POST /interpretations/preview`. Текст ошибки называет предел, а не фактическое число.
 
 ### Журнал действий
 
@@ -81,7 +91,7 @@ mock-обработчиках `frontend/src/mocks/handlers/*` для разра�
 CSV: `timestamp,kind,label,params,result[,observed]`; `params` и `observed` — `k=v;k=v` или JSON-объект
 (значения — числа или строки). Первая строка с `timestamp` в первой колонке считается заголовком.
 JSON — массив `CreateActionInput`. Ошибка в любой записи отклоняет весь файл (`422 invalid_action_log`,
-в `message` — номер строки). `kind` ∈ `read_params | set_param | get_measurement | read_log | other`
+в `message` — номер строки или записи); файл больше 16 МиБ — `413 action_log_too_large` (не обрезается). `kind` ∈ `read_params | set_param | get_measurement | read_log | other`
 (неизвестный — `other`). Сессии привязываются автоматически: из целевых сессий, начавшихся в окне
 от 0,5 с до действия до 5 с после него, выбирается ближайшая по времени
 (`links[].method = "auto_time"`, `deltaMs` — начало сессии минус время действия). Действия, для которых
@@ -100,10 +110,10 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 | `GET /interpretation-versions/{versionId}` | — | `InterpretationVersion` |
 | `GET /interpretation-versions/{versionId}/export` | — | JSON-файл спецификации |
 | `POST /interpretations/validate` | `{spec}` | `ValidationResult` (всегда `200`) |
+| `POST /interpretations/preview` | `{spec, sessionId}` | `ListResponse<Message>` — применение несохранённого черновика |
 
 Везде, где передаётся `spec`, принимается и скачанный файл версии (`/export`, артефакт отчёта): объект
 `$meta` в его корне отбрасывается, как это делает `protolab apply --spec`.
-| `POST /interpretations/preview` | `{spec, sessionId}` | `ListResponse<Message>` — применение несохранённого черновика |
 
 Формат спецификации — [`interpretation-format.md`](interpretation-format.md).
 
@@ -136,10 +146,10 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 | `GET /projects/{projectId}/reports` | — | `ListResponse<Report>` |
 | `POST /projects/{projectId}/reports` | `{title, versionId, runIds}` | `202 {report, jobId}` |
 | `GET /reports/{reportId}/files/{fileName}` | — | файл артефакта (`ReportArtifact.url` указывает сюда) |
-| `GET /reports/{reportId}/bundle` | — | комплект для передачи (`report.<имя>.v<N>.zip`): артефакты отчёта и исходные записи, на которые ссылается файл примеров (`captures/<sha256>.pcap[ng]`); `protolab verify --examples examples.*.json` выполняется в распакованном каталоге без изменений. `409 not_ready`, пока отчёт формируется |
-| `GET /jobs` | `limit?` (по умолчанию 20) | `ListResponse<Job>` — последние задачи всех проектов |
+| `GET /reports/{reportId}/bundle` | — | комплект для передачи (`report.<имя>.v<N>.zip`): артефакты отчёта и исходные записи, на которые ссылается файл примеров (`captures/<sha256>.pcap[ng]`); `protolab verify --examples examples.*.json` выполняется в распакованном каталоге без изменений. `409 not_ready`, если отчёт не в статусе `ready` (формируется или не удался) |
+| `GET /jobs` | `limit?` (по умолчанию 20, не больше 100) | `ListResponse<Job>` — последние задачи всех проектов |
 | `GET /jobs/{jobId}` | — | `Job` |
-| `POST /jobs/{jobId}/cancel` | — | `Job` (`status = "cancelled"`); `409 not_cancellable`, если задача уже завершена или успела завершиться, пока запрос отмены шёл к ней (результат её работы сохранён) |
+| `POST /jobs/{jobId}/cancel` | — | `Job` (`status = "cancelled"`); `409 not_cancellable`, если задача уже завершена или завершилась сама (успешно или с ошибкой), пока шла отмена — у успешной задачи результат сохранён; итоговое состояние — `GET /jobs/{jobId}`. Если задача не остановилась за 10 с, ответ `200` с текущим состоянием (`running`) |
 | `GET /system/info` | — | `SystemInfo` (сборка, защитные пределы, `runtime.MemStats`, каталог данных) |
 
 ## Обязательная семантика
@@ -171,9 +181,10 @@ JSON — массив `CreateActionInput`. Ошибка в любой запис
 7. **Сводка проверки** (`RunSummary`) учитывает весь корпус: нарушения, неполные, неоднозначные и
    нераспознанные сообщения, неописанные байты, неприменимые правила (`inapplicableRules`).
    `previousRunId` — предыдущая успешная проверка той же интерпретации на том же корпусе.
-   Проверка или отчёт, прерванные остановкой процесса (`running`/`pending` при следующем запуске или в
-   импортированном архиве), получают `status = "failed"` (у проверки — `error` с причиной), а не остаются
-   «выполняющимися».
+   Отмена проверки (пользователем или штатной остановкой сервера) даёт `status = "cancelled"`. Проверка или отчёт,
+   оставшиеся `running`/`pending` после жёсткого завершения процесса (при следующем запуске или в импортированном
+   архиве), получают `status = "failed"` (у проверки — `error` «Прервано: сервер был остановлен во время
+   выполнения»), а не остаются «выполняющимися».
 8. **Происхождение.** Каждый `Finding.examples[]` и `Observation.source` — это `SourceRef`
    (запись + sha256 + сессия + направление + диапазон + номера пакетов). `Observation.snapshotHex` —
    байты в момент создания (неизвестные — `??`). `integrity = "mismatch"`, если байты по ссылке изменились
@@ -197,15 +208,23 @@ reports/<reportId>/...       # артефакты отчётов
 первом обращении. Поэтому после импорта (`POST /projects/import`) запускается задача `import_project`,
 которая заново разбирает записи и сверяет `sha256`.
 
-Импорт проверяет архив: допускаются только `project.json`, `captures/` и `reports/`; абсолютные пути,
-`..` и `:` в именах отклоняются; общий объём распакованных данных ограничен. Если в каталоге данных уже
-есть проект с теми же идентификаторами (импорт собственного экспорта), все идентификаторы
-перевыпускаются, ссылки между сущностями сохраняются.
+`project.json` в архиве — состояние из памяти на момент запроса; файлы пишутся без блокировки проекта, так что
+долгое скачивание проект не блокирует.
+
+Импорт проверяет архив (нарушение — `422 invalid_archive`, архив больше `8 × maxCaptureBytes` — `413 archive_too_large`):
+допускаются только `project.json`, `captures/` и `reports/`; абсолютные пути, `..` и `:` в именах отклоняются, как и
+повторяющиеся (без учёта регистра) или конфликтующие имена; до распаковки по заявленным размерам ограничены число
+файлов (10 000), `project.json` (128 МиБ) и общий объём (`min(2 × предел архива, max(100 × размер архива,
+maxCaptureBytes))`). В `project.json` проверяются пути (`captures[].file` — ровно `captures/<sha256>.<format>`, id и
+файлы отчётов — простые имена) и вид всех идентификаторов (`^[A-Za-z0-9_-]{1,64}$`). Если в каталоге данных уже
+есть проект или объект с теми же идентификаторами (импорт собственного экспорта) либо каталог с таким id,
+все идентификаторы перевыпускаются, ссылки между сущностями сохраняются; импорты устанавливаются по одному.
 
 ## Раздача фронтенда из Go
 
 `npm run build` складывает сборку в `internal/webui/dist`, а `internal/webui/webui.go` встраивает её в
 бинарь директивой `//go:embed all:dist`. `internal/server/static.go` отдаёт файлы как SPA: существующий
-файл — как есть (`/assets/*` с `Cache-Control: immutable`), `index.html` — с `no-cache`, любой другой путь
+файл — как есть (`/assets/*` с `Cache-Control: public, max-age=31536000, immutable`, прочие файлы без хеша в
+имени — с `no-cache`), `index.html` — с `no-cache`, любой другой путь
 вне `/api/` — `index.html` (клиентский роутинг), отсутствующий `/assets/*` — `404`. Если бинарь собран без
 фронтенда, вместо интерфейса отдаётся страница-подсказка, API при этом работает.

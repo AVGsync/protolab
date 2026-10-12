@@ -50,14 +50,14 @@ protolab --no-tui        # без TUI (сервисы, CI, Docker): журнал
 | Клавиша | Действие |
 |---|---|
 | `o` / `Enter` | открыть веб-интерфейс в браузере |
-| `c` | скопировать адрес (OSC 52 — работает и по SSH) |
+| `c` / `y` | скопировать адрес (OSC 52 — работает и по SSH) |
 | `d` | создать демо-проект |
-| `l` | журнал во весь экран |
-| `?` | справка |
-| `q` / `Ctrl+C` | остановить сервер и выйти |
+| `l` / `Tab` | журнал во весь экран (`↑↓`/`jk`, `PgUp`/`PgDn`, `g`/`G`, `Esc`) |
+| `?` / `F1` | справка |
+| `q` / `Ctrl+C` | остановить сервер и выйти; если идут фоновые задачи — после подтверждения (`y`, `Enter` или второй `Ctrl+C`) |
 
-Если stdout не терминал (перенаправление в файл, systemd), TUI не запускается: адрес печатается
-в stderr, сервер работает до `SIGINT`/`SIGTERM`.
+Если stdin или stdout не терминал (перенаправление в файл, systemd) или `TERM=dumb`, TUI не запускается: адрес
+печатается в stderr, журнал идёт туда же, сервер работает до `SIGINT`/`SIGTERM`.
 
 Флаги сервера:
 
@@ -72,7 +72,8 @@ protolab --no-tui        # без TUI (сервисы, CI, Docker): журнал
 | `--debug` | — | подробный журнал |
 
 Каталог данных: `$PROTOLAB_DATA`, иначе `~/.local/share/protolab` (Linux, учитывает `XDG_DATA_HOME`),
-`~/Library/Application Support/ProtoLab` (macOS), `%LOCALAPPDATA%\ProtoLab` (Windows).
+`~/Library/Application Support/ProtoLab` (macOS), `%LOCALAPPDATA%\ProtoLab` (Windows); если ничего из этого не
+определено — `protolab-data` в текущем каталоге.
 Каждый проект — папка `projects/<id>/` с `project.json`, исходными записями `captures/<sha256>.pcap` или `.pcapng` (расширение по формату записи)
 и отчётами `reports/`.
 
@@ -80,15 +81,31 @@ protolab --no-tui        # без TUI (сервисы, CI, Docker): журнал
 
 ```bash
 protolab demo [--data DIR]                     # создать демо-проект и выйти
-protolab apply --spec interpretation.json --input capture.pcapng --out results.json [--port 5020] [--strict]
-protolab verify --examples examples.<имя>.v3.json   # повторить проверку из отчёта
+protolab apply --spec interpretation.json --input capture.pcapng [--out results.json] [--port 5020] [--all] [--overlap first|last] [--strict]
+protolab verify --examples examples.<имя>.v3.json [--spec F] [--base DIR]   # повторить проверку из отчёта
 protolab version
 ```
 
 `apply` разбирает запись по интерпретации тем же движком, что и веб-интерфейс, и пишет JSON с
-сообщениями и сводкой. С `--strict` код выхода `3`, если есть нарушения или неполные сообщения.
-`verify` берёт файл примеров из отчёта, находит исходные записи по `sha256`, заново применяет
-интерпретацию и сравнивает сводку с сохранённой. При расхождении код выхода `1`.
+сообщениями и сводкой (по умолчанию в stdout). Разбираются сессии порта устройства (`--port`, иначе
+`transport.port` из интерпретации; `--all` — все сессии). С `--strict` код выхода `3`, если есть нарушения или
+неполные сообщения.
+
+`verify` берёт файл примеров из отчёта, находит исходные записи по их пути в проекте (`captures/<sha256>.pcap[ng]`
+рядом с файлом примеров или до четырёх каталогов выше; `--base` задаёт корень явно), сверяет их SHA-256, заново
+собирает потоки с настройками проверки, применяет интерпретацию и сравнивает сводку с сохранённой. При расхождении
+код выхода `1`.
+
+Передать исследование проще всего комплектом: на странице «Отчёты» кнопка «Комплект (.zip)»
+(`GET /api/v1/reports/{id}/bundle`) скачивает архив с отчётом, интерпретацией, результатами, файлом примеров и
+исходными записями. После распаковки проверка повторяется из этого каталога, путь можно указывать относительный:
+
+```bash
+unzip report.thermolink.v3.zip -d thermolink && cd thermolink
+protolab verify --examples examples.thermolink.v3.json
+```
+
+Так же команда работает из папки отчёта внутри проекта (`projects/<id>/reports/<reportId>/`).
 
 ## Структура репозитория
 
@@ -113,6 +130,7 @@ protolab/
 └── docs/
     ├── backend.md                # как устроен Go-код (подробно)
     ├── api.md                    # REST API frontend ↔ backend
+    ├── design.md                 # визуальный язык веб-интерфейса
     ├── performance.md            # контрольная нагрузка, замеры и защитные пределы
     └── interpretation-format.md  # формат интерпретации protolab/v1
 ```
