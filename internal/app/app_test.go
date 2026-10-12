@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/AVGsync/protolab/internal/demo"
 	"github.com/AVGsync/protolab/internal/model"
 	"github.com/AVGsync/protolab/internal/report"
+	"github.com/AVGsync/protolab/internal/store"
 )
 
 func newTestApp(t *testing.T, dir string) *App {
@@ -255,5 +257,46 @@ func TestReopenKeepsProjects(t *testing.T) {
 		if c.Integrity != "ok" {
 			t.Errorf("capture %s integrity after reopen: %s", c.FileName, c.Integrity)
 		}
+	}
+}
+
+func TestInterruptedIndexingResumesOnStart(t *testing.T) {
+	dir := t.TempDir()
+	a := newTestApp(t, dir)
+	p, err := a.CreateProject(model.CreateProjectInput{Name: "Прерванный импорт", TargetPorts: []int{5020}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := demo.Build(demo.Options{}).Captures[0]
+	res, err := a.ImportCapture(p.ID, c.FileName, bytes.NewReader(c.Data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, a, res.JobID)
+	a.Close()
+
+	// Simulate a process that stopped while the import job was running.
+	st, err := store.LoadDir(filepath.Join(dir, "projects", p.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Captures[0].Status = "indexing"
+	st.Captures[0].SessionCount = 0
+	data, _ := json.Marshal(st)
+	if err := store.WriteFileAtomic(filepath.Join(dir, "projects", p.ID, "project.json"), data); err != nil {
+		t.Fatal(err)
+	}
+
+	b := newTestApp(t, dir)
+	jobs := b.Jobs().List(0)
+	if len(jobs) != 1 || jobs[0].Kind != "import_capture" {
+		t.Fatalf("resumed jobs: %+v", jobs)
+	}
+	if j := waitJob(t, b, jobs[0].ID); j.Status != "succeeded" {
+		t.Fatalf("resumed job: %+v", j)
+	}
+	got, err := b.GetCapture(res.Capture.ID)
+	if err != nil || got.Status != "ready" || got.SessionCount == 0 {
+		t.Fatalf("capture after resume: %+v %v", got, err)
 	}
 }

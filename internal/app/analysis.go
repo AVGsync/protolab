@@ -68,7 +68,13 @@ type sessionData struct {
 	flow    *tcpflow.Session
 	streams [2]model.DirectedStream
 	packets []model.Packet
+	// analysis is the sequence number of the analysis that produced the
+	// session; it keeps results of a superseded analysis out of the message cache.
+	analysis uint64
 }
+
+// analysisSeq numbers analysis results process-wide.
+var analysisSeq atomic.Uint64
 
 func (s *sessionData) stream(d model.Direction) *model.DirectedStream {
 	if d == model.C2S {
@@ -79,6 +85,7 @@ func (s *sessionData) stream(d model.Direction) *model.DirectedStream {
 
 // captureAnalysis is the result of reading and reassembling a capture file.
 type captureAnalysis struct {
+	seq         uint64
 	captureID   string
 	sha256      string
 	format      string
@@ -193,7 +200,7 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 		return nil, err
 	}
 
-	res := &captureAnalysis{captureID: in.capture.ID, format: string(r.Format())}
+	res := &captureAnalysis{captureID: in.capture.ID, format: string(r.Format()), seq: analysisSeq.Add(1)}
 	asm := tcpflow.NewAssembler(tcpflow.Options{
 		OverlapPolicy:  in.settings.OverlapPolicy,
 		TargetPorts:    in.settings.TargetPorts,
@@ -296,6 +303,7 @@ func analyzeFile(ctx context.Context, in analyzeInput, progress jobs.Progress) (
 	res.byID = make(map[string]*sessionData, len(flows))
 	for _, fl := range flows {
 		sd := buildSession(in, fl)
+		sd.analysis = res.seq
 		res.sessions = append(res.sessions, sd)
 		res.byID[sd.dto.ID] = sd
 		if sd.dto.IsTarget {

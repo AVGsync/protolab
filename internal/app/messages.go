@@ -13,8 +13,9 @@ import (
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
-// messageCache is a small LRU of parsed sessions keyed by session, spec hash
-// and project revision (actions and settings change the result).
+// messageCache is a small LRU of parsed sessions keyed by session, spec hash,
+// the analysis that produced the session and the project revision (actions
+// and settings change the result).
 type messageCache struct {
 	mu    sync.Mutex
 	cap   int
@@ -82,7 +83,7 @@ func engineInput(sd *sessionData, actions []model.ActionEntry, actionIDs []strin
 // parse applies a spec to a session, using the cache.
 func (p *project) parse(sd *sessionData, sp *spec.Spec, hash string) engine.ParsedSession {
 	p.mu.Lock()
-	key := sd.dto.ID + "|" + hash + "|" + itoa(p.rev)
+	key := sd.dto.ID + "|" + hash + "|" + strconv.FormatUint(sd.analysis, 10) + "|" + itoa(p.rev)
 	p.mu.Unlock()
 	if parsed, ok := p.cache.get(key); ok {
 		return parsed

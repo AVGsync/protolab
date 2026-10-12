@@ -76,6 +76,31 @@ func (a *App) ImportCapture(projectID, fileName string, body io.Reader) (model.U
 	return model.UploadCaptureResult{Capture: rec.Capture, JobID: job.ID}, nil
 }
 
+// resumeIndexing restarts indexing of captures left in the "indexing" state
+// by a previous run that stopped before the import job finished.
+func (a *App) resumeIndexing(p *project) {
+	p.mu.Lock()
+	var pending []store.CaptureRecord
+	for _, c := range p.st.Captures {
+		if c.Status == "indexing" {
+			pending = append(pending, c)
+		}
+	}
+	p.mu.Unlock()
+	for _, rec := range pending {
+		captureID := rec.ID
+		job := a.jobs.Start(p.id, "import_capture", "Импорт "+rec.FileName, func(ctx context.Context, progress jobs.Progress) (*model.JobResult, error) {
+			return a.indexCapture(ctx, p, captureID, progress)
+		})
+		p.mu.Lock()
+		if i := findIndex(p.st.Captures, func(c *storeCapture) bool { return c.ID == captureID }); i >= 0 {
+			p.st.Captures[i].JobID = job.ID
+		}
+		p.mu.Unlock()
+		a.log.Info("capture indexing resumed", "project", p.id, "file", rec.FileName)
+	}
+}
+
 // importCaptureSync stores and indexes a capture in the calling goroutine (demo project, tests).
 func (a *App) importCaptureSync(ctx context.Context, p *project, fileName string, body io.Reader) (model.Capture, error) {
 	rec, err := a.storeUpload(p, fileName, body)
@@ -216,8 +241,13 @@ func (a *App) indexCapture(ctx context.Context, p *project, captureID string, pr
 		return nil, errors.New("запись удалена")
 	}
 	c := &p.st.Captures[i]
+	if ctx.Err() != nil && a.ctx.Err() != nil {
+		// The program is shutting down: keep the file and the "indexing" record,
+		// indexing resumes on the next start (resumeIndexing).
+		return nil, ctx.Err()
+	}
 	if ctx.Err() != nil {
-		// Cancelled: nothing of the capture is kept, so it can be imported again.
+		// Cancelled by the user: nothing of the capture is kept, so it can be imported again.
 		os.Remove(in.path)
 		p.st.Captures = append(p.st.Captures[:i], p.st.Captures[i+1:]...)
 		if serr := p.save(); serr != nil {

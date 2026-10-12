@@ -243,9 +243,6 @@ func (a *App) ImportProject(fileName string, r io.Reader) (model.Project, string
 	normalizeState(st)
 	for i := range st.Captures {
 		st.Captures[i].ProjectID = st.Project.ID
-		if st.Captures[i].Status == "indexing" {
-			st.Captures[i].Status = "error" // the archive was made in the middle of an import
-		}
 	}
 	st.Project.Description = strings.TrimSpace(st.Project.Description)
 
@@ -263,6 +260,7 @@ func (a *App) ImportProject(fileName string, r io.Reader) (model.Project, string
 	p := newProject(a, st)
 	a.register(p)
 	a.log.Info("project imported", "project", p.id, "file", fileName)
+	a.resumeIndexing(p) // the archive was made in the middle of a capture import
 
 	job := a.jobs.Start(p.id, "import_project", "Импорт проекта "+cleanFileName(fileName), func(ctx context.Context, progress jobs.Progress) (*model.JobResult, error) {
 		ids := p.captureIDs()
@@ -272,6 +270,9 @@ func (a *App) ImportProject(fileName string, r io.Reader) (model.Project, string
 			}
 			progress(float64(i)/float64(max(len(ids), 1)), "Проверка SHA-256 и восстановление потоков")
 			if _, err := p.analysis(c); err != nil {
+				if e, ok := AsError(err); ok && e.Code == "not_ready" {
+					continue // indexed by its own resumed import job
+				}
 				a.log.Warn("imported capture failed", "capture", c, "err", err)
 			}
 		}
