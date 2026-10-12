@@ -1,6 +1,6 @@
 import { CaretDownIcon, CaretRightIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
-import { fieldRange, MeaningMark, type FieldLink, type Message, type ParsedField } from '@/entities/message';
+import { fieldRange, type FieldLink, type Message, type ParsedField } from '@/entities/message';
 import { cn, type ByteRange } from '@/shared/lib';
 import { fieldSwatchClass, Status } from '@/shared/ui';
 
@@ -32,7 +32,7 @@ export function FieldTable({ message, selection, link, onSelectRange, onLink }: 
       <table className="w-full border-collapse text-[12px]">
         <thead>
           <tr className="text-left text-xs text-muted">
-            <th className="h-6 border-b border-line pr-2 font-normal">Поле</th>
+            <th className="h-6 border-b border-line pr-3 font-normal">Поле</th>
             <th className="h-6 border-b border-line pr-2 text-right font-normal" title="Смещение в сообщении">
               @
             </th>
@@ -40,7 +40,7 @@ export function FieldTable({ message, selection, link, onSelectRange, onLink }: 
             <th className="h-6 border-b border-line pr-2 font-normal">Значение</th>
             <th
               className="h-6 border-b border-line font-normal"
-              title="Пометка есть у гипотез и подтверждённых полей; поле без пометки описывает только структуру"
+              title="Зелёный квадрат: назначение подтверждено. Оранжевый: гипотеза. Без квадрата: описана только структура."
             >
               Смысл
             </th>
@@ -85,7 +85,6 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
   const selected = sameRange(selection, range);
   const linked = link?.messageIndex === message.index && link.path === field.path;
   const violation = field.status === 'violation';
-  const showMeaning = field.meaningStatus === 'hypothesis' || field.meaningStatus === 'confirmed';
 
   return (
     <>
@@ -99,7 +98,7 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
           violation && 'text-danger',
         )}
       >
-        <td className="py-1.5 pr-2 whitespace-nowrap" style={{ paddingLeft: 16 + depth * 12 }}>
+        <td className="py-1.5 pr-3 whitespace-nowrap" style={{ paddingLeft: 16 + depth * 12 }}>
           <span className="relative inline-flex items-center gap-2">
             {children.length > 0 ? (
               <button
@@ -121,16 +120,11 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
         <td className="py-1.5 pr-2 text-right font-mono text-muted">{field.offset}</td>
         <td className="px-2 py-1.5 font-mono whitespace-nowrap text-muted">{field.type}</td>
         <td className="py-1.5 pr-2">
-          <span className={cn('font-mono', field.status === 'unknown' && 'text-warn')}>{field.display}</span>
+          <span className={cn('font-mono whitespace-nowrap', field.status === 'unknown' && 'text-warn')}>{field.display}</span>
           {field.issue && <div className="text-[11px] text-danger">{field.issue}</div>}
         </td>
-        <td className="py-1.5">
-          {field.meaning && <span className={violation ? '' : 'text-muted'}>{field.meaning}</span>}
-          {showMeaning && field.type !== 'struct' && (
-            <div>
-              <MeaningMark status={field.meaningStatus!} />
-            </div>
-          )}
+        <td className="py-1.5 pr-4">
+          <Meaning field={field} violation={violation} />
         </td>
       </tr>
       {open &&
@@ -138,5 +132,21 @@ function FieldRow({ message, field, tone, depth, selection, link, onSelectRange,
           <FieldRow key={c.path} message={message} field={c} tone={tone} depth={depth + 1} selection={selection} link={link} onSelectRange={onSelectRange} onLink={onLink} />
         ))}
     </>
+  );
+}
+
+/** Confirmed meaning is a quiet green square; a hypothesis also says so in words; structure alone is silent. */
+function Meaning({ field, violation }: { field: ParsedField; violation: boolean }) {
+  const status = field.type === 'struct' ? undefined : field.meaningStatus;
+  if (!field.meaning && status !== 'hypothesis') return null;
+  return (
+    <span className="inline-flex items-start gap-1.5">
+      {status === 'confirmed' && <i aria-hidden title="Назначение подтверждено" className="mt-[7px] size-[7px] shrink-0 bg-ok" />}
+      {status === 'hypothesis' && <i aria-hidden title="Назначение: непроверенная гипотеза" className="mt-[7px] size-[7px] shrink-0 bg-warn" />}
+      <span className={violation ? '' : 'text-muted'}>
+        {field.meaning}
+        {status === 'hypothesis' && <span className="ml-1.5 text-fg">гипотеза</span>}
+      </span>
+    </span>
   );
 }

@@ -53,7 +53,7 @@ export function ContextBar({
       <Link to={routes.sessions(projectId)} className="text-muted hover:text-fg" title="К списку сессий" aria-label="К списку сессий">
         <ArrowLeftIcon size={16} />
       </Link>
-      <span className="font-mono text-[13px] font-semibold">{s.id}</span>
+      <span className="shrink-0 font-mono text-[13px] font-semibold whitespace-nowrap">{s.id}</span>
       <EndpointPair client={s.client} server={s.server} className="shrink-0" />
       <Anomalies session={s} />
 
