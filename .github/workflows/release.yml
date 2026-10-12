@@ -3,20 +3,20 @@ name: release
 # Every merge to main: the same checks as a pull request -> six cross-compiled binaries with the embedded
 # web UI -> tag vMAJOR.MINOR.<run_number> -> GitHub Release. No manual tags: MAJOR.MINOR comes from the
 # VERSION file, the patch is github.run_number (only grows, unchanged on "Re-run jobs").
+#
+# A release is created only by a push to main. workflow_dispatch (any branch) runs the identical build and
+# verification but never tags or publishes: the archives are attached to the run for inspection.
 on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Build and attach the archives to the run, but do not create a tag or a release
-        type: boolean
-        default: true
 
 # Serialise releases and never cancel one that may be halfway through publishing. Workflow-level on
 # purpose: a job-level group would let a faster run overtake an older one and invert the tag order.
+# Manual dry runs get a group of their own: they publish nothing, and sharing the "release" group would let
+# a dry run replace (cancel) a release run that is waiting in the queue.
 concurrency:
-  group: release
+  group: ${{ github.event_name == 'push' && 'release' || format('dry-run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 permissions:
@@ -30,6 +30,8 @@ jobs:
   verify:
     name: verify
     uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read # a called workflow can only keep or lower the caller's token permissions
 
   release:
     name: build and publish
@@ -81,35 +83,15 @@ jobs:
           DATE: ${{ steps.v.outputs.date }}
         run: make release-local VERSION="$VERSION" COMMIT="$GITHUB_SHA" DATE="$DATE"
 
+      # scripts/verify-dist.sh (also `make verify-dist` locally): archive set, SHA256SUMS, notices vs `go version -m`
+      # of every binary, GOOS/GOARCH/CGO flags, and the linux/amd64 binary really starts and serves the web UI.
       - name: Verify artifacts
         env:
           VERSION: ${{ steps.v.outputs.version }}
-        run: |
-          cd dist
-          shopt -s nullglob
-          archives=(./*.tar.gz ./*.zip)
-          test "${#archives[@]}" -eq 6 # 4 unix tar.gz + 2 windows zip
-          sha256sum -c SHA256SUMS
-          # No `grep -q` after a pipe: with pipefail it can SIGPIPE the producer (exit 141).
-          tar -tzf "protolab_${VERSION}_linux_amd64.tar.gz" | grep -x "protolab_${VERSION}_linux_amd64/protolab" > /dev/null
-          tar -tzf "protolab_${VERSION}_linux_amd64.tar.gz" | grep -x "protolab_${VERSION}_linux_amd64/THIRD_PARTY_NOTICES.md" > /dev/null
-          unzip -l "protolab_${VERSION}_windows_amd64.zip" | grep -F "protolab.exe" > /dev/null
-          # The ldflags really reached main and the web UI is really embedded.
-          bin="stage/protolab_${VERSION}_linux_amd64/protolab"
-          out="$("$bin" version)"
-          echo "$out"
-          grep -qF "$VERSION" <<< "$out" || { echo "::error::binary does not report version ${VERSION}"; exit 1; }
-          data="$(mktemp -d)"
-          "$bin" --no-tui --data "$data" --addr 127.0.0.1:7421 > /dev/null 2>&1 &
-          pid=$!
-          for _ in $(seq 1 50); do curl -fsS http://127.0.0.1:7421/api/v1/system/info > /dev/null && break; sleep 0.2; done
-          page="$(curl -fsS http://127.0.0.1:7421/)"
-          kill "$pid"
-          grep -qF '<div id="root">' <<< "$page" || { echo "::error::web UI is not embedded"; exit 1; }
-          ls -lh ./*.tar.gz ./*.zip
+        run: make verify-dist VERSION="$VERSION"
 
-      - name: Attach archives to the run (dry run)
-        if: ${{ inputs.dry_run }}
+      - name: Attach archives to the run (manual dry run)
+        if: ${{ github.event_name != 'push' }}
         uses: actions/upload-artifact@v7
         with:
           name: protolab-${{ steps.v.outputs.version }}
@@ -119,9 +101,10 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
+          overwrite: true # a re-run of the same run uploads the same name again
 
       - name: Publish GitHub Release
-        if: ${{ github.ref == 'refs/heads/main' && !inputs.dry_run }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -129,17 +112,26 @@ jobs:
         run: |
           # Re-run of the same run (same run_number, same commit): already released, nothing to do.
           # The same tag on another commit means the counter went backwards: refuse loudly.
-          existing="$(gh api "repos/${GH_REPO}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null || true)"
-          if [[ -n "$existing" ]]; then
-            if [[ "$existing" == "$GITHUB_SHA" ]]; then
-              echo "::notice::${TAG} already exists at ${GITHUB_SHA}; nothing to publish"
-              exit 0
-            fi
+          # matching-refs answers 200 with [] when there is no such tag. (git/ref/tags/X answers 404, and gh
+          # prints the JSON error body to stdout, which would look like an existing tag.) It matches by
+          # prefix (v0.1.4 also lists v0.1.40...), hence the exact-name filter and --paginate.
+          existing="$(gh api --paginate "repos/${GH_REPO}/git/matching-refs/tags/${TAG}" \
+            --jq '.[] | select(.ref == "refs/tags/" + env.TAG) | .object.sha')"
+          if [[ -n "$existing" && "$existing" != "$GITHUB_SHA" ]]; then
             echo "::error::tag ${TAG} already exists at ${existing}, this run builds ${GITHUB_SHA}. Raise MAJOR.MINOR in VERSION."
             exit 1
           fi
+          if [[ -n "$existing" ]] && gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::${TAG} is already released from ${GITHUB_SHA}; nothing to publish"
+            exit 0
+          fi
 
           prev="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          # Re-running an old failed run after a newer release must not turn the old build into "Latest".
+          if [[ -n "$prev" && "$(printf '%s\n%s\n' "$prev" "$TAG" | sort -V | tail -n 1)" != "$TAG" ]]; then
+            echo "::error::release ${prev} is newer than ${TAG}; not publishing an older build as the latest release"
+            exit 1
+          fi
           args=(
             --target "$GITHUB_SHA"
             --title "ProtoLab ${TAG}"

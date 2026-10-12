@@ -1,9 +1,9 @@
 # ProtoLab developer Makefile.
 #
-# CI uses the same targets (release.yml runs `make web` and `make release-local`), so a local
-# `make release-local` produces exactly what a merge to main publishes.
+# CI uses the same targets (release.yml runs `make web`, `make release-local` and `make verify-dist`), so a
+# local `make release-local` produces exactly what a merge to main publishes.
 #
-# Needs: GNU make, bash, git, go (see go.mod), node >= 20.19 + npm, tar, gzip, zip.
+# Needs: GNU make, bash, git, go (see go.mod), node >= 20.19 + npm, tar, gzip, zip, unzip, curl.
 
 SHELL         := /bin/bash
 .DEFAULT_GOAL := help
@@ -12,6 +12,7 @@ BIN     := protolab
 CMD     := ./cmd/protolab
 BIN_DIR := bin
 DIST    := dist
+NOTICES := $(DIST)/THIRD_PARTY_NOTICES.md
 WEB_DIR := frontend
 WEB_OUT := internal/webui/dist
 
@@ -45,7 +46,7 @@ WEB_STAMP  := $(WEB_OUT)/index.html
 NODE_STAMP := $(WEB_DIR)/node_modules/.package-lock.json
 
 .PHONY: help web web-dev build build-go run test test-go test-web vet fmt fmt-check lint check \
-        verify-embed release-local tidy clean
+        verify-embed notices release-local verify-dist tidy clean
 
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -103,12 +104,16 @@ lint: $(NODE_STAMP) ## go vet + tsc + eslint
 tidy: ## go mod tidy
 	go mod tidy
 
-check: fmt-check lint test ## Everything CI runs on a pull request
+check: fmt-check lint test ## gofmt, go vet, tsc, eslint and all tests (the core of the CI checks; CI adds smoke and cross builds)
+
+notices: $(NODE_STAMP) ## Third-party licenses (Go modules of every target + web UI packages) -> dist/THIRD_PARTY_NOTICES.md
+	scripts/notices.sh $(NOTICES) $(TARGETS)
 
 release-local: web ## Cross-compile all targets into dist/ (tar.gz/zip + SHA256SUMS), exactly what CI publishes
 	@$(MAKE) --no-print-directory verify-embed
 	rm -rf $(DIST)
 	mkdir -p $(DIST)/stage
+	@$(MAKE) --no-print-directory notices
 	@set -euo pipefail; \
 	for t in $(TARGETS); do \
 	  os="$${t%/*}"; arch="$${t#*/}"; \
@@ -118,7 +123,8 @@ release-local: web ## Cross-compile all targets into dist/ (tar.gz/zip + SHA256S
 	  echo "==> $$os/$$arch"; \
 	  mkdir -p "$$dir"; \
 	  CGO_ENABLED=0 GOOS="$$os" GOARCH="$$arch" go build -trimpath -ldflags '$(LDFLAGS)' -o "$$dir/$(BIN)$$ext" $(CMD); \
-	  for f in README.md LICENSE* THIRD_PARTY_NOTICES.md; do if [ -e "$$f" ]; then cp "$$f" "$$dir/"; fi; done; \
+	  cp README.md "$(NOTICES)" "$$dir/"; \
+	  for f in LICENSE*; do if [ -e "$$f" ]; then cp "$$f" "$$dir/"; fi; done; \
 	  if [ "$$os" = windows ]; then \
 	    (cd $(DIST)/stage && zip -q -X -r "../$$name.zip" "$$name"); \
 	  else \
@@ -127,6 +133,9 @@ release-local: web ## Cross-compile all targets into dist/ (tar.gz/zip + SHA256S
 	done
 	cd $(DIST) && $(SHA256) *.tar.gz *.zip > SHA256SUMS
 	@echo; cat $(DIST)/SHA256SUMS
+
+verify-dist: ## Check the output of release-local (archives, checksums, notices, build flags, a running binary)
+	scripts/verify-dist.sh $(DIST) $(VERSION) $(TARGETS)
 
 clean: ## Remove bin/, dist/ and the built web UI (keeps the tracked placeholder)
 	rm -rf $(BIN_DIR) $(DIST)

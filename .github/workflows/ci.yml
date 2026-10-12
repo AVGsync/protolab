@@ -63,6 +63,7 @@ jobs:
           path: internal/webui/dist
           retention-days: 1
           if-no-files-found: error
+          overwrite: true # "Re-run jobs" repeats this upload inside the same run; a same-named artifact would be a 409
 
   go:
     name: go (tidy, fmt, vet, test -race)
