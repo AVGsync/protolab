@@ -5,6 +5,7 @@ package browser
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,9 +18,19 @@ func fake(t *testing.T, dir, name, body string) {
 	}
 }
 
+// setup gives the test a PATH with nothing but its fake openers (and sleep), so
+// real handlers installed on the machine (gio, x-www-browser on CI runners)
+// cannot take part.
 func setup(t *testing.T, env map[string]string) string {
 	dir := t.TempDir()
-	t.Setenv("PATH", dir+":/usr/bin:/bin")
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sleep, filepath.Join(dir, "sleep")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
 	for _, k := range []string{"DISPLAY", "WAYLAND_DISPLAY", "WSL_DISTRO_NAME", "WSL_INTEROP", "BROWSER"} {
 		t.Setenv(k, "")
 	}
